@@ -1,0 +1,96 @@
+# ------------------------------
+# Miscellaneous
+# ------------------------------
+*.class
+*.log
+*.pyc
+*.swp
+*.tmp
+*.bak
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# ------------------------------
+# IntelliJ / Android Studio
+# ------------------------------
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# ------------------------------
+# VS Code
+# ------------------------------
+.vscode/
+
+# ------------------------------
+# Flutter / Dart / Pub
+# ------------------------------
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+/build/
+/coverage/
+**/doc/api/
+**/ios/Flutter/.last_build_id
+
+# ------------------------------
+# iOS / Xcode / CocoaPods
+# ------------------------------
+ios/Pods/
+ios/DerivedData/
+**/xcuserdata/
+**/*.xcuserstate
+
+# ------------------------------
+# Android
+# ------------------------------
+android/local.properties
+*.apk
+*.aab
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# ------------------------------
+# Symbolication / Obfuscation
+# ------------------------------
+app.*.symbols
+app.*.map.json
+app.*.symbols.json
+
+# ------------------------------
+# Firebase (do not commit)
+# ------------------------------
+firebase-debug.log*
+.firebaserc
+.firebase/
+android/app/google-services.json
+ios/Runner/GoogleService-Info.plist
+
+# ------------------------------
+# Android signing (do not commit)
+# ------------------------------
+*.keystore
+*.jks
+android/key.properties
+
+# ------------------------------
+# Env / secrets
+# ------------------------------
+.env
+.env.*
+*.pem
+*.p12
+*.pfx
