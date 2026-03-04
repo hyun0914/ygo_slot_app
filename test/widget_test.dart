@@ -1,30 +1,33 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ygo_slot_app/main.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
+  testWidgets('앱이 정상적으로 실행되고 랜딩 화면이 표시된다', (WidgetTester tester) async {
     await tester.pumpWidget(const MyApp());
-
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
-
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
     await tester.pump();
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    // 랜딩 화면의 타이틀 텍스트 확인
+    expect(find.text('유희왕 슬롯'), findsOneWidget);
+  });
+
+  testWidgets('랜딩 화면에 시작 버튼과 설정 버튼이 표시된다', (WidgetTester tester) async {
+    await tester.pumpWidget(const MyApp());
+    await tester.pump();
+
+    expect(find.textContaining('바로 시작'), findsOneWidget);
+    expect(find.textContaining('카드 수 설정'), findsOneWidget);
+  });
+
+  testWidgets('카드 수 설정 버튼을 누르면 다이얼로그가 열린다', (WidgetTester tester) async {
+    await tester.pumpWidget(const MyApp());
+    await tester.pump();
+
+    await tester.tap(find.textContaining('카드 수 설정'));
+    await tester.pumpAndSettle();
+
+    // 다이얼로그 또는 바텀시트가 열리는지 확인
+    expect(find.byType(Dialog).evaluate().isNotEmpty || find.byType(BottomSheet).evaluate().isNotEmpty, isTrue);
   });
 }

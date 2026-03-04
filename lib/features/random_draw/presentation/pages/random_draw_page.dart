@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 import 'dart:convert';
 
+import 'package:confetti/confetti.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flutter/foundation.dart';
@@ -9,17 +10,44 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../../core/api_client.dart';
+import '../../../../core/app_constants.dart';
+import '../../../../core/app_strings.dart';
 import '../../../../core/models/ygopro_card.dart';
 import '../../../../core/widgets/app_network_image.dart';
 import '../../../../core/widgets/ygo_card_back.dart';
+import '../../application/draw_history_store.dart';
 import '../../application/random_draw_controller.dart';
 import '../../domain/draw_filter.dart';
 import '../../domain/daily_slot_rule.dart';
+import '../../domain/draw_history_entry.dart';
 import '../widgets/landing.dart';
+import 'history_page.dart';
+import 'probability_page.dart';
 import '../widgets/slot_header.dart';
 import '../widgets/slot_result_dialog.dart';
 import '../widgets/card_tile.dart';
 import '../widgets/skeleton.dart';
+
+// -----------------------------
+// 연속 뽑기 상태 묶음
+// -----------------------------
+class _BatchState {
+  bool running = false;
+  int token = 0;
+  int total = 0;
+  int done = 0;
+  final Map<int, int> hist = {0: 0, 1: 0, 2: 0, 3: 0};
+
+  void reset(int newTotal) {
+    running = true;
+    total = newTotal;
+    done = 0;
+    hist[0] = 0;
+    hist[1] = 0;
+    hist[2] = 0;
+    hist[3] = 0;
+  }
+}
 
 // -----------------------------
 // Page
@@ -31,8 +59,24 @@ class RandomDrawPage extends StatefulWidget {
   State<RandomDrawPage> createState() => _RandomDrawPageState();
 }
 
-class _RandomDrawPageState extends State<RandomDrawPage> with SingleTickerProviderStateMixin {
+class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStateMixin {
   late final RandomDrawController _controller;
+
+  // Confetti
+  late final ConfettiController _confettiController;
+  late final ConfettiController _confettiBossLeft;
+  late final ConfettiController _confettiBossRight;
+
+  // 보스 잭팟 연출
+  late final AnimationController _flashController;
+  late final AnimationController _bossTextController;
+  bool _isBossJackpot = false;
+
+  // 잭팟 스트릭
+  int _jackpotStreak = 0;
+  int _bestJackpotStreak = 0;
+  int _totalJackpots = 0;
+  bool _todayJackpotDone = false;
 
   // 결과
   List<YgoCard> _cards = [];
@@ -55,9 +99,9 @@ class _RandomDrawPageState extends State<RandomDrawPage> with SingleTickerProvid
   final Set<int> _stopped = <int>{};
   bool _spinning = false;
 
-  // 릴
+  // 릴 (ValueNotifier로 변경 → 그리드만 재빌드)
   Timer? _reelTimer;
-  List<int> _reelIndex = [];
+  final ValueNotifier<List<int>> _reelNotifier = ValueNotifier<List<int>>([]);
 
   // 스크롤
   final ScrollController _gridScrollController = ScrollController();
@@ -72,20 +116,33 @@ class _RandomDrawPageState extends State<RandomDrawPage> with SingleTickerProvid
   Completer<void>? _drawCompleter;
 
   // 연속뽑기(배치)
-  bool _batchRunning = false;
-  int _batchToken = 0; // 취소 토큰
-  int _batchTotal = 0;
-  int _batchDone = 0;
-  final Map<int, int> _batchHist = {0: 0, 1: 0, 2: 0, 3: 0};
+  final _BatchState _batch = _BatchState();
 
-  // 데일리 룰 전용 풀(뽑기 결과와 분리)
-  List<YgoCard> _dailyPool = [];
-  String? _dailyPoolDateKey; // yyyy-MM-dd
-  Future<void>? _dailyPoolFuture; // 동시 호출 방지(중복 네트워크 방지)
-
+  // SharedPreferences 키 버전 정책:
+  // - 저장 포맷(JSON 구조)이 바뀔 경우 v2, v3... 으로 올린다.
+  // - 버전을 올리면 구버전 키는 자동으로 무시된다(날짜 불일치로 삭제됨).
+  // - 강제 삭제가 필요하면 initState에서 prefs.remove(구버전 키) 를 호출한다.
   static const _kTodayRuleKeyPrefix = 'random_draw_today_rule_v1';
+  static const _kStreakKey = 'ygo_jackpot_streak_v1';
 
   String _todayRulePrefsKey(int count) => '${_kTodayRuleKeyPrefix}_$count';
+
+  String _friendlyError(Object e) {
+    final msg = e.toString().toLowerCase();
+    if (msg.contains('timeout') || msg.contains('timedout')) {
+      return '네트워크 응답이 너무 느립니다.\n잠시 후 다시 시도해 주세요.';
+    }
+    if (msg.contains('socketexception') || msg.contains('network') || msg.contains('connection')) {
+      return '인터넷 연결을 확인해 주세요.';
+    }
+    if (msg.contains('api error: 400')) {
+      return '검색 조건에 해당하는 카드가 없습니다.\n필터를 변경해 보세요.';
+    }
+    if (msg.contains('api error')) {
+      return '카드 데이터를 불러오지 못했습니다.\n잠시 후 다시 시도해 주세요.';
+    }
+    return '알 수 없는 오류가 발생했습니다.\n잠시 후 다시 시도해 주세요.';
+  }
 
   @override
   void initState() {
@@ -97,12 +154,19 @@ class _RandomDrawPageState extends State<RandomDrawPage> with SingleTickerProvid
       duration: const Duration(milliseconds: 1000),
     );
 
+    _confettiController = ConfettiController(duration: const Duration(seconds: 4));
+    _confettiBossLeft  = ConfettiController(duration: const Duration(seconds: 5));
+    _confettiBossRight = ConfettiController(duration: const Duration(seconds: 5));
+    _flashController   = AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
+    _bossTextController= AnimationController(vsync: this, duration: const Duration(milliseconds: 2500));
+
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _loadTodayRuleFromPrefs(count: _count);
       if (!mounted) return;
       if (_todayRule == null) {
         await _ensureTodayRuleFromDailyPool();
       }
+      await _loadStreak();
     });
   }
 
@@ -110,8 +174,14 @@ class _RandomDrawPageState extends State<RandomDrawPage> with SingleTickerProvid
   void dispose() {
     _finishTimer?.cancel();
     _reelTimer?.cancel();
+    _reelNotifier.dispose();
     _gridScrollController.dispose();
     _spinController.dispose();
+    _confettiController.dispose();
+    _confettiBossLeft.dispose();
+    _confettiBossRight.dispose();
+    _flashController.dispose();
+    _bossTextController.dispose();
     super.dispose();
   }
 
@@ -153,11 +223,11 @@ class _RandomDrawPageState extends State<RandomDrawPage> with SingleTickerProvid
   String _currentFilterSummary() {
     switch (_count) {
       case 3:
-        return '도전(3장)';
+        return AppStrings.modeChallenge;
       case 5:
-        return '기본(5장)';
+        return AppStrings.modeDefault;
       case 7:
-        return '편안(7장)';
+        return AppStrings.modeComfort;
       default:
         return '$_count장';
     }
@@ -178,11 +248,17 @@ class _RandomDrawPageState extends State<RandomDrawPage> with SingleTickerProvid
     if (_todayRule != null && _todayRule!.dateKey == key) return;
 
     // 모드별 키로 로드
+    debugPrint('[TodayRule] 캐시 미스 — prefs 로드 시도 (count=$count, date=$key)');
     await _loadTodayRuleFromPrefs(count: count);
-    if (_todayRule != null && _todayRule!.dateKey == key) return;
+    if (_todayRule != null && _todayRule!.dateKey == key) {
+      debugPrint('[TodayRule] prefs에서 복원 성공 (kind=${_todayRule!.kind.name})');
+      return;
+    }
 
-    await _ensureDailyPool();
-    _todayRule = buildTodayRule(_dailyPool, now: DateTime.now(), count: count);
+    final dailyPool = await _controller.ensureDailyPool();
+    debugPrint('[TodayRule] 풀 크기: ${dailyPool.length}, 새 룰 생성 중...');
+    _todayRule = buildTodayRule(dailyPool, now: DateTime.now(), count: count);
+    debugPrint('[TodayRule] 생성 완료 — kind=${_todayRule!.kind.name}');
 
     // 모드별 키로 저장
     await _saveTodayRuleToPrefs(_todayRule!, count: count);
@@ -217,6 +293,7 @@ class _RandomDrawPageState extends State<RandomDrawPage> with SingleTickerProvid
       _spinning = true;
       _error = null;
       _hasGenerated = true;
+      _isBossJackpot = false;
     });
 
     _spinController.repeat();
@@ -238,19 +315,20 @@ class _RandomDrawPageState extends State<RandomDrawPage> with SingleTickerProvid
         return;
       }
 
-      _reelIndex = List<int>.generate(result.length, (_) => 0);
+      _reelNotifier.value = List<int>.generate(result.length, (_) => 0);
 
-      _reelTimer = Timer.periodic(const Duration(milliseconds: 55), (_) {
+      _reelTimer = Timer.periodic(AppConstants.reelTickInterval, (_) {
         if (!mounted) return;
         if (!_spinning) return;
         if (_cards.isEmpty) return;
 
-        setState(() {
-          for (var i = 0; i < _cards.length; i++) {
-            if (_stopped.contains(i)) continue;
-            _reelIndex[i] = (_reelIndex[i] + 1) % _cards.length;
-          }
-        });
+        final prev = _reelNotifier.value;
+        final next = List<int>.of(prev);
+        for (var i = 0; i < _cards.length; i++) {
+          if (_stopped.contains(i)) continue;
+          next[i] = (next[i] + 1) % _cards.length;
+        }
+        _reelNotifier.value = next;
       });
 
       _finishOrder = List<int>.generate(result.length, (i) => i)..shuffle(_random);
@@ -259,7 +337,7 @@ class _RandomDrawPageState extends State<RandomDrawPage> with SingleTickerProvid
 
       var cursor = 0;
 
-      _finishTimer = Timer.periodic(const Duration(milliseconds: 90), (t) {
+      _finishTimer = Timer.periodic(AppConstants.reelStopInterval, (t) {
         if (!mounted) return;
 
         final idx = _finishOrder[cursor];
@@ -279,7 +357,7 @@ class _RandomDrawPageState extends State<RandomDrawPage> with SingleTickerProvid
             if (_gridScrollController.hasClients) {
               _gridScrollController.animateTo(
                 0,
-                duration: const Duration(milliseconds: 260),
+                duration: AppConstants.reelScrollDuration,
                 curve: Curves.easeOutCubic,
               );
             }
@@ -293,7 +371,7 @@ class _RandomDrawPageState extends State<RandomDrawPage> with SingleTickerProvid
         if (!completer.isCompleted) completer.complete();
         return;
       }
-      setState(() => _error = e.toString());
+      setState(() => _error = _friendlyError(e));
       _endSpin(showPopup: false);
       if (!completer.isCompleted) completer.complete();
     }
@@ -320,6 +398,7 @@ class _RandomDrawPageState extends State<RandomDrawPage> with SingleTickerProvid
       if (hits > 0) {
         _showSingleHitPopup(hits);
       }
+      _saveDrawHistory(hits);
     });
   }
 
@@ -333,41 +412,47 @@ class _RandomDrawPageState extends State<RandomDrawPage> with SingleTickerProvid
       context: context,
       useSafeArea: true,
       showDragHandle: true,
+      isScrollControlled: true,
       builder: (ctx) {
         final theme = Theme.of(ctx);
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('연속 뽑기',
-                  style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900)),
-              const SizedBox(height: 10),
-              Text('정해진 횟수만큼만 돌리고, 마지막에 요약 결과를 보여줘요.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant)),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  Expanded(child: _batchChoice(ctx, 5)),
-                  const SizedBox(width: 10),
-                  Expanded(child: _batchChoice(ctx, 10)),
-                  const SizedBox(width: 10),
-                  Expanded(child: _batchChoice(ctx, 15)),
-                ],
-              ),
-              const SizedBox(height: 14),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton(
-                  onPressed: () => Navigator.of(ctx).pop(),
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 12),
-                    child: Text('닫기'),
+        return SafeArea(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(
+              16, 12, 16,
+              MediaQuery.viewInsetsOf(ctx).bottom + 16,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('연속 뽑기',
+                    style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900)),
+                const SizedBox(height: 10),
+                Text('정해진 횟수만큼만 돌리고, 마지막에 요약 결과를 보여줘요.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant)),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(child: _batchChoice(ctx, 5)),
+                    const SizedBox(width: 10),
+                    Expanded(child: _batchChoice(ctx, 10)),
+                    const SizedBox(width: 10),
+                    Expanded(child: _batchChoice(ctx, 15)),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 12),
+                      child: Text('닫기'),
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         );
       },
@@ -389,49 +474,75 @@ class _RandomDrawPageState extends State<RandomDrawPage> with SingleTickerProvid
   }
 
   Future<void> _startBatch(int total) async {
-    if (_batchRunning) return;
+    if (_batch.running) return;
 
-    setState(() {
-      _batchRunning = true;
-      _batchTotal = total;
-      _batchDone = 0;
-      _batchHist[0] = 0;
-      _batchHist[1] = 0;
-      _batchHist[2] = 0;
-      _batchHist[3] = 0;
-    });
+    setState(() => _batch.reset(total));
 
-    final token = ++_batchToken;
+    final token = ++_batch.token;
 
     for (var i = 0; i < total; i++) {
       if (!mounted) break;
-      if (token != _batchToken) break;
+      if (token != _batch.token) break;
 
       await _runDraw(showPopup: false);
 
       if (!mounted) break;
-      if (token != _batchToken) break;
+      if (token != _batch.token) break;
 
       final hits = countSlotHits(cards: _cards, rule: _todayRule).clamp(0, 3);
-      _batchHist[hits] = (_batchHist[hits] ?? 0) + 1;
+      _batch.hist[hits] = (_batch.hist[hits] ?? 0) + 1;
 
-      setState(() => _batchDone = i + 1);
+      if (hits >= 3) {
+        if (_todayRule?.kind == DayKind.boss) {
+          unawaited(_triggerBossJackpot());
+        } else {
+          _confettiController.play();
+        }
+        await _updateStreak();
+      }
 
-      await Future.delayed(const Duration(milliseconds: 140));
+      setState(() => _batch.done = i + 1);
+
+      await Future.delayed(AppConstants.batchDrawDelay);
     }
 
     if (!mounted) return;
-    final cancelled = token != _batchToken;
+    final cancelled = token != _batch.token;
 
-    setState(() => _batchRunning = false);
+    setState(() => _batch.running = false);
 
     if (cancelled) return;
     _showBatchSummaryPopup();
   }
 
   void _stopBatchDraw() {
-    _batchToken++;
-    if (mounted) setState(() => _batchRunning = false);
+    _batch.token++;
+    if (!mounted) return;
+    setState(() => _batch.running = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('연속 뽑기를 중단했습니다. (${_batch.done} / ${_batch.total}회)'),
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  // -----------------------------
+  // Boss Jackpot Effect
+  // -----------------------------
+  Future<void> _triggerBossJackpot() async {
+    setState(() => _isBossJackpot = true);
+    _confettiController.play();
+    _confettiBossLeft.play();
+    _confettiBossRight.play();
+    _flashController.forward(from: 0);
+    _bossTextController.forward(from: 0);
+    _haptic(HapticFeedback.heavyImpact);
+    await Future.delayed(const Duration(milliseconds: 120));
+    _haptic(HapticFeedback.heavyImpact);
+    await Future.delayed(const Duration(milliseconds: 120));
+    _haptic(HapticFeedback.heavyImpact);
   }
 
   // -----------------------------
@@ -441,47 +552,88 @@ class _RandomDrawPageState extends State<RandomDrawPage> with SingleTickerProvid
     final rule = _todayRule;
     if (rule == null) return;
 
-    final title = hits >= 3
+    final isBoss = hits >= 3 && _todayRule?.kind == DayKind.boss;
+
+    final title = isBoss
+        ? '👑 BOSS JACKPOT!!'
+        : hits >= 3
         ? '🎰 잭팟!'
         : hits == 2
         ? '🔥 2개 적중!'
         : '✨ 1개 적중!';
 
-    final message = hits >= 3
+    final message = isBoss
+        ? '전설의 잭팟 달성! 특정 카드 3장을 모두 뽑았어요!'
+        : hits >= 3
         ? '오늘의 타겟 3개 전부 맞췄어요!'
         : hits == 2
         ? '거의 잭팟… 한 번만 더!'
         : '적중! 운이 달아오르는 중 🔥';
 
-    showDialog(
+    if (hits >= 3) {
+      if (isBoss) {
+        unawaited(_triggerBossJackpot());
+      } else {
+        _confettiController.play();
+      }
+      _updateStreak();
+    }
+
+    showGeneralDialog(
       context: context,
-      builder: (_) => SlotResultDialog(
+      barrierDismissible: true,
+      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+      barrierColor: Colors.black54,
+      transitionDuration: const Duration(milliseconds: 320),
+      pageBuilder: (ctx, anim, secAnim) => SlotResultDialog(
         hits: hits,
         targets: 3,
         title: title,
         message: message,
         rule: rule,
         cards: _cards,
+        isBossJackpot: isBoss,
       ),
+      transitionBuilder: (ctx, animation, _, child) {
+        final beginScale = isBoss ? 0.3 : 0.75;
+        final scale = CurvedAnimation(parent: animation, curve: Curves.easeOutBack);
+        return ScaleTransition(
+          scale: Tween<double>(begin: beginScale, end: 1.0).animate(scale),
+          child: FadeTransition(opacity: animation, child: child),
+        );
+      },
     );
   }
 
   void _showBatchSummaryPopup() {
-    final total = _batchTotal;
-    final zero = _batchHist[0] ?? 0;
-    final one = _batchHist[1] ?? 0;
-    final two = _batchHist[2] ?? 0;
-    final three = _batchHist[3] ?? 0;
+    final total = _batch.total;
+    final zero = _batch.hist[0] ?? 0;
+    final one = _batch.hist[1] ?? 0;
+    final two = _batch.hist[2] ?? 0;
+    final three = _batch.hist[3] ?? 0;
 
     final jackpotRate = total == 0 ? 0.0 : (three / total) * 100.0;
     final hitRate = total == 0 ? 0.0 : ((total - zero) / total) * 100.0;
 
-    showDialog(
+    final hasJackpot = three > 0;
+    final streakAtClose = _jackpotStreak;
+    final bestAtClose = _bestJackpotStreak;
+
+    showGeneralDialog(
       context: context,
-      builder: (_) {
+      barrierDismissible: true,
+      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+      barrierColor: Colors.black54,
+      transitionDuration: const Duration(milliseconds: 320),
+      pageBuilder: (ctx, anim, secAnim) {
         final theme = Theme.of(context);
         return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+            side: hasJackpot
+                ? const BorderSide(color: Color(0xFFFFD700), width: 2)
+                : BorderSide.none,
+          ),
           title: Text('🔁 연속 뽑기 결과',
               style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900)),
           content: Column(
@@ -490,24 +642,40 @@ class _RandomDrawPageState extends State<RandomDrawPage> with SingleTickerProvid
             children: [
               Text('총 $total회',
                   style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w800)),
-              const SizedBox(height: 10),
-              _resultLine(theme, '0개 적중', '$zero'),
-              _resultLine(theme, '1개 적중', '$one'),
-              _resultLine(theme, '2개 적중', '$two'),
-              _resultLine(theme, '3개(잭팟)', '$three'),
+              const SizedBox(height: 12),
+              _resultBar(theme, '0개 적중', zero, total,
+                  theme.colorScheme.onSurfaceVariant.withAlpha(100)),
+              const SizedBox(height: 6),
+              _resultBar(theme, '1개 적중', one, total, theme.colorScheme.secondary),
+              const SizedBox(height: 6),
+              _resultBar(theme, '2개 적중', two, total, theme.colorScheme.tertiary),
+              const SizedBox(height: 6),
+              _resultBar(theme, '3개(잭팟)', three, total,
+                  hasJackpot ? const Color(0xFFFFD700) : theme.colorScheme.primary),
               const SizedBox(height: 12),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerHighest,
+                  color: hasJackpot
+                      ? const Color(0xFFFFD700).withAlpha(20)
+                      : theme.colorScheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: theme.dividerColor),
+                  border: Border.all(
+                    color: hasJackpot
+                        ? const Color(0xFFFFD700).withAlpha(160)
+                        : theme.dividerColor,
+                  ),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('🎰 잭팟률: ${jackpotRate.toStringAsFixed(1)}%',
-                        style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w900)),
+                    Text(
+                      '🎰 잭팟률: ${jackpotRate.toStringAsFixed(1)}%',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w900,
+                        color: hasJackpot ? const Color(0xFFB8860B) : null,
+                      ),
+                    ),
                     const SizedBox(height: 4),
                     Text('✨ (참고) 1개 이상 적중률: ${hitRate.toStringAsFixed(1)}%',
                         style: theme.textTheme.bodySmall?.copyWith(
@@ -515,6 +683,26 @@ class _RandomDrawPageState extends State<RandomDrawPage> with SingleTickerProvid
                   ],
                 ),
               ),
+              if (hasJackpot && streakAtClose > 0) ...[
+                const SizedBox(height: 10),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFD700).withAlpha(28),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFFFD700).withAlpha(140)),
+                  ),
+                  child: Text(
+                    '🔥 $streakAtClose일 연속 잭팟 달성 중!'
+                    '${bestAtClose > 1 ? '  최고 $bestAtClose일' : ''}',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontWeight: FontWeight.w900,
+                      color: const Color(0xFFB8860B),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
           actions: [
@@ -525,19 +713,45 @@ class _RandomDrawPageState extends State<RandomDrawPage> with SingleTickerProvid
           ],
         );
       },
+      transitionBuilder: (ctx, animation, secAnim, child) {
+        final scale = CurvedAnimation(parent: animation, curve: Curves.easeOutBack);
+        return ScaleTransition(
+          scale: Tween<double>(begin: 0.75, end: 1.0).animate(scale),
+          child: FadeTransition(opacity: animation, child: child),
+        );
+      },
     );
   }
 
-  Widget _resultLine(ThemeData theme, String left, String right) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
-      child: Row(
-        children: [
-          Expanded(child: Text(left, style: theme.textTheme.bodyMedium)),
-          Text(right,
-              style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w900)),
-        ],
-      ),
+  Widget _resultBar(ThemeData theme, String label, int count, int total, Color barColor) {
+    final ratio = total == 0 ? 0.0 : (count / total).clamp(0.0, 1.0);
+    return Row(
+      children: [
+        SizedBox(
+          width: 72,
+          child: Text(label, style: theme.textTheme.bodySmall),
+        ),
+        Expanded(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: ratio,
+              minHeight: 10,
+              backgroundColor: theme.colorScheme.surfaceContainerHighest,
+              valueColor: AlwaysStoppedAnimation<Color>(barColor),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        SizedBox(
+          width: 28,
+          child: Text(
+            '$count',
+            textAlign: TextAlign.end,
+            style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w900),
+          ),
+        ),
+      ],
     );
   }
 
@@ -552,55 +766,130 @@ class _RandomDrawPageState extends State<RandomDrawPage> with SingleTickerProvid
 
     try {
       action();
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[Haptic] 피드백 실패 (무시): $e');
+    }
+  }
+
+  // -----------------------------
+  // Draw history
+  // -----------------------------
+  void _saveDrawHistory(int hits) {
+    if (_cards.isEmpty) return;
+    final entry = DrawHistoryEntry(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      timestamp: DateTime.now(),
+      hits: hits,
+      mode: _count,
+      cards: _cards
+          .map((c) => DrawHistoryCard(id: c.id, name: c.name, imageUrl: c.imageUrl))
+          .toList(),
+    );
+    DrawHistoryStore.addEntry(entry); // fire-and-forget
+  }
+
+  void _openHistory() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const HistoryPage()),
+    );
+  }
+
+  // -----------------------------
+  // Jackpot streak
+  // -----------------------------
+  Future<void> _loadStreak() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_kStreakKey);
+    if (raw == null || raw.isEmpty) return;
+
+    try {
+      final m = jsonDecode(raw) as Map<String, dynamic>;
+      final lastDate = (m['lastDate'] as String?) ?? '';
+      final streak = (m['streak'] as num?)?.toInt() ?? 0;
+      final best = (m['best'] as num?)?.toInt() ?? 0;
+      final total = (m['total'] as num?)?.toInt() ?? 0;
+
+      final today = _todayKey(DateTime.now());
+      final yesterday = _todayKey(DateTime.now().subtract(const Duration(days: 1)));
+
+      if (!mounted) return;
+      setState(() {
+        _totalJackpots = total;
+        _bestJackpotStreak = best;
+        if (lastDate == today) {
+          _jackpotStreak = streak;
+          _todayJackpotDone = true;
+        } else if (lastDate == yesterday) {
+          _jackpotStreak = streak;
+          _todayJackpotDone = false;
+        } else {
+          // 연속이 끊겼으므로 스트릭 리셋
+          _jackpotStreak = 0;
+          _todayJackpotDone = false;
+        }
+      });
+    } catch (e) {
+      debugPrint('[Streak] 파싱 실패: $e');
+    }
+  }
+
+  Future<void> _updateStreak() async {
+    if (_todayJackpotDone) return;
+
+    final today = _todayKey(DateTime.now());
+    final yesterday = _todayKey(DateTime.now().subtract(const Duration(days: 1)));
+
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_kStreakKey);
+
+    String lastDate = '';
+    int streak = 0;
+    int best = _bestJackpotStreak;
+    int total = _totalJackpots;
+
+    if (raw != null && raw.isNotEmpty) {
+      try {
+        final m = jsonDecode(raw) as Map<String, dynamic>;
+        lastDate = (m['lastDate'] as String?) ?? '';
+        streak = (m['streak'] as num?)?.toInt() ?? 0;
+        best = (m['best'] as num?)?.toInt() ?? _bestJackpotStreak;
+        total = (m['total'] as num?)?.toInt() ?? _totalJackpots;
+      } catch (_) {}
+    }
+
+    if (lastDate == today) {
+      // 오늘 이미 저장됨 (다른 경로로 호출된 경우 방어)
+      if (!mounted) return;
+      setState(() => _todayJackpotDone = true);
+      return;
+    } else if (lastDate == yesterday) {
+      streak++;
+    } else {
+      streak = 1;
+    }
+
+    total++;
+    if (streak > best) best = streak;
+
+    final m = <String, dynamic>{
+      'lastDate': today,
+      'streak': streak,
+      'best': best,
+      'total': total,
+    };
+    await prefs.setString(_kStreakKey, jsonEncode(m));
+
+    if (!mounted) return;
+    setState(() {
+      _jackpotStreak = streak;
+      _bestJackpotStreak = best;
+      _totalJackpots = total;
+      _todayJackpotDone = true;
+    });
   }
 
   // -----------------------------
   // Daily pool & prefs
-  // -----------------------------
-  Future<void> _ensureDailyPool() async {
-    final key = _todayKey(DateTime.now());
-
-    if (_dailyPoolDateKey == key && _dailyPool.isNotEmpty) return;
-
-    if (_dailyPoolFuture != null) {
-      await _dailyPoolFuture;
-      return;
-    }
-
-    _dailyPoolFuture = () async {
-      _dailyPoolDateKey = key;
-      _dailyPool = [];
-
-      const tries = [200, 120, 80, 50];
-
-      for (final n in tries) {
-        try {
-          final pool = await _controller.generateDraw(
-            DrawFilter(
-              count: n,
-              type: null,
-              attribute: null,
-              levelExpr: null,
-              atkExpr: null,
-            ),
-          );
-
-          if (pool.isNotEmpty) {
-            _dailyPool = pool;
-            break;
-          }
-        } catch (_) {}
-      }
-    }();
-
-    try {
-      await _dailyPoolFuture;
-    } finally {
-      _dailyPoolFuture = null;
-    }
-  }
-
   Future<void> _loadTodayRuleFromPrefs({required int count}) async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_todayRulePrefsKey(count));
@@ -625,7 +914,8 @@ class _RandomDrawPageState extends State<RandomDrawPage> with SingleTickerProvid
 
       final list = (m['targets'] as List?) ?? const [];
       final targets = list.map((e) {
-        final t = e as Map<String, dynamic>;
+        if (e is! Map<String, dynamic>) return SlotTarget.category('');
+        final t = e;
         final cardId = (t['cardId'] as num?)?.toInt();
         if (cardId != null && cardId > 0) {
           return SlotTarget.exact(
@@ -641,7 +931,8 @@ class _RandomDrawPageState extends State<RandomDrawPage> with SingleTickerProvid
 
       _todayRule = DailySlotRule(dateKey: dateKey, kind: kind, targets: targets);
       if (mounted) setState(() {});
-    }catch (_) {
+    } catch (e) {
+      debugPrint('[TodayRule] 파싱 실패, 저장된 데이터 삭제: $e');
       await prefs.remove(_todayRulePrefsKey(count));
     }
   }
@@ -725,11 +1016,14 @@ class _RandomDrawPageState extends State<RandomDrawPage> with SingleTickerProvid
                       child: SizedBox(
                         width: cardWidth,
                         child: AspectRatio(
-                          aspectRatio: 59 / 86,
-                          child: AppNetworkImage(
-                            url,
-                            fit: BoxFit.contain,
-                            fallback: (_) => const YgoCardBack(label: 'YGO'),
+                          aspectRatio: AppConstants.ygoCardAspectRatio,
+                          child: Hero(
+                            tag: 'slot_card_${t.cardId}',
+                            child: AppNetworkImage(
+                              url,
+                              fit: BoxFit.contain,
+                              fallback: (_) => const YgoCardBack(label: 'YGO'),
+                            ),
                           ),
                         ),
                       ),
@@ -765,63 +1059,191 @@ class _RandomDrawPageState extends State<RandomDrawPage> with SingleTickerProvid
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('유희왕 슬롯')),
-      body: SafeArea(child: _buildHome(theme)),
+    return Stack(
+      children: [
+        Scaffold(
+          appBar: AppBar(
+            title: const Text('유희왕 슬롯'),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.info_outline),
+                tooltip: '확률 정보',
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const ProbabilityPage()),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.history),
+                tooltip: '뽑기 기록',
+                onPressed: _openHistory,
+              ),
+            ],
+          ),
+          body: SafeArea(child: _buildHome(theme)),
+        ),
+        IgnorePointer(
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: ConfettiWidget(
+              confettiController: _confettiController,
+              blastDirectionality: BlastDirectionality.explosive,
+              numberOfParticles: 40,
+              gravity: 0.2,
+              colors: const [
+                Color(0xFFFFD700),
+                Colors.purple,
+                Colors.red,
+                Color(0xFF00BFFF),
+                Colors.green,
+              ],
+            ),
+          ),
+        ),
+        // 보스 잭팟: 골드 플래시
+        IgnorePointer(
+          child: AnimatedBuilder(
+            animation: _flashController,
+            builder: (_, _) {
+              final t = _flashController.value;
+              final opacity = (t < 0.3 ? (t / 0.3) : (1.0 - t) / 0.7) * 0.45;
+              return Opacity(
+                opacity: opacity.clamp(0.0, 1.0),
+                child: Container(color: const Color(0xFFFFD700)),
+              );
+            },
+          ),
+        ),
+        // 보스 잭팟: BOSS JACKPOT 텍스트
+        IgnorePointer(
+          child: AnimatedBuilder(
+            animation: _bossTextController,
+            builder: (_, _) {
+              final t = _bossTextController.value;
+              final scale = t < 0.2
+                  ? (t / 0.2) * 1.15
+                  : t < 0.3
+                  ? 1.15 - ((t - 0.2) / 0.1 * 0.15)
+                  : 1.0;
+              final opacity = (t < 0.1
+                  ? t / 0.1
+                  : t > 0.7
+                  ? (1.0 - t) / 0.3
+                  : 1.0).clamp(0.0, 1.0);
+              return Opacity(
+                opacity: opacity,
+                child: Transform.scale(
+                  scale: scale,
+                  child: const Center(
+                    child: Text(
+                      'BOSS\nJACKPOT!!',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 62,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFFFFD700),
+                        letterSpacing: 2,
+                        shadows: [
+                          Shadow(color: Colors.black87, blurRadius: 16, offset: Offset(0, 4)),
+                          Shadow(color: Colors.black54, blurRadius: 32),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        // 보스 잭팟: 좌/우 컨페티
+        IgnorePointer(
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: ConfettiWidget(
+              confettiController: _confettiBossLeft,
+              blastDirection: pi * -0.25,
+              numberOfParticles: 60,
+              gravity: 0.3,
+              colors: const [Color(0xFFFFD700), Colors.orange, Colors.red, Colors.white],
+            ),
+          ),
+        ),
+        IgnorePointer(
+          child: Align(
+            alignment: Alignment.topRight,
+            child: ConfettiWidget(
+              confettiController: _confettiBossRight,
+              blastDirection: pi * 1.25,
+              numberOfParticles: 60,
+              gravity: 0.3,
+              colors: const [Color(0xFFFFD700), Colors.orange, Colors.red, Colors.white],
+            ),
+          ),
+        ),
+      ],
     );
   }
 
   Widget _buildHome(ThemeData theme) {
-    if (_showLanding) {
-      return Landing(
-        loading: _loading,
-        spinTurns: _spinController,
-        onQuickStart: () async {
-          _haptic(HapticFeedback.mediumImpact);
-          setState(() => _showLanding = false);
-          await _runDraw(showPopup: true);
-        },
-        onOpenCount: () {
-          _haptic(HapticFeedback.selectionClick);
-          setState(() => _showLanding = false);
-          _openCountSheet();
-        },
-        footer: Column(
-          children: [
-            const SizedBox(height: 14),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: theme.dividerColor),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 280),
+      switchInCurve: Curves.easeOut,
+      switchOutCurve: Curves.easeIn,
+      transitionBuilder: (child, animation) =>
+          FadeTransition(opacity: animation, child: child),
+      child: _showLanding
+          ? Landing(
+              key: const ValueKey('landing'),
+              loading: _loading,
+              spinTurns: _spinController,
+              onQuickStart: () async {
+                _haptic(HapticFeedback.mediumImpact);
+                setState(() => _showLanding = false);
+                await _runDraw(showPopup: true);
+              },
+              onOpenCount: () {
+                _haptic(HapticFeedback.selectionClick);
+                setState(() => _showLanding = false);
+                _openCountSheet();
+              },
+              footer: Column(
                 children: [
-                  Icon(Icons.info_outline,
-                      size: 18, color: theme.colorScheme.onSurfaceVariant),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      '비공식 팬 프로젝트입니다. Konami 및 Yu-Gi-Oh!와 무관합니다.\n'
-                        '카드 데이터/이미지: Yu-Gi-Oh! API by YGOPRODeck',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                        height: 1.3,
-                      ),
+                  if (_jackpotStreak > 0) ...[
+                    const SizedBox(height: 14),
+                    _buildStreakChip(theme),
+                  ],
+                  const SizedBox(height: 14),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: theme.dividerColor),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.info_outline,
+                            size: 18, color: theme.colorScheme.onSurfaceVariant),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '비공식 팬 프로젝트입니다. Konami 및 Yu-Gi-Oh!와 무관합니다.\n'
+                                '카드 데이터/이미지: Yu-Gi-Oh! API by YGOPRODeck',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                              height: 1.3,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return Column(
+            )
+          : Column(
+              key: const ValueKey('main'),
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
@@ -831,6 +1253,11 @@ class _RandomDrawPageState extends State<RandomDrawPage> with SingleTickerProvid
             onTapExactTarget: _openExactTargetPreview,
           ),
         ),
+        if (_jackpotStreak > 0)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+            child: _buildStreakChip(theme),
+          ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
           child: Row(
@@ -859,7 +1286,7 @@ class _RandomDrawPageState extends State<RandomDrawPage> with SingleTickerProvid
               ),
               const Spacer(),
               TextButton.icon(
-                onPressed: _loading || _batchRunning ? null : _openCountSheet,
+                onPressed: _loading || _batch.running ? null : _openCountSheet,
                 icon: const Icon(Icons.settings, size: 18),
                 label: const Text('변경'),
               ),
@@ -871,7 +1298,7 @@ class _RandomDrawPageState extends State<RandomDrawPage> with SingleTickerProvid
           child: SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: (_loading || _batchRunning)
+              onPressed: (_loading || _batch.running)
                   ? null
                   : () async {
                 _haptic(HapticFeedback.mediumImpact);
@@ -892,7 +1319,7 @@ class _RandomDrawPageState extends State<RandomDrawPage> with SingleTickerProvid
                   ),
                   const SizedBox(width: 10),
                   Text(
-                    _loading ? '🎲 뽑는 중...' : '🎲 랜덤 뽑기',
+                    _loading ? AppStrings.drawingButton : AppStrings.drawButton,
                     style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w900,
@@ -911,28 +1338,33 @@ class _RandomDrawPageState extends State<RandomDrawPage> with SingleTickerProvid
                 child: OutlinedButton(
                   onPressed: _loading
                       ? null
-                      : _batchRunning
+                      : _batch.running
                       ? _stopBatchDraw
                       : _openBatchPicker,
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 11),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                    foregroundColor: theme.colorScheme.onSurfaceVariant,
+                    foregroundColor: _batch.running
+                        ? theme.colorScheme.error
+                        : theme.colorScheme.onSurfaceVariant,
+                    side: _batch.running
+                        ? BorderSide(color: theme.colorScheme.error.withAlpha(160))
+                        : null,
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(_batchRunning ? Icons.stop_circle_outlined : Icons.repeat, size: 18),
+                      Icon(_batch.running ? Icons.stop_circle_outlined : Icons.repeat, size: 18),
                       const SizedBox(width: 8),
                       Text(
-                        _batchRunning ? '연속뽑기 중단' : '연속 뽑기',
+                        _batch.running ? AppStrings.batchStopButton : AppStrings.batchStartButton,
                         style: const TextStyle(fontWeight: FontWeight.w900),
                       ),
                     ],
                   ),
                 ),
               ),
-              if (_batchRunning) ...[
+              if (_batch.running) ...[
                 const SizedBox(width: 10),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -942,7 +1374,7 @@ class _RandomDrawPageState extends State<RandomDrawPage> with SingleTickerProvid
                     border: Border.all(color: theme.dividerColor),
                   ),
                   child: Text(
-                    '$_batchDone / $_batchTotal',
+                    '${_batch.done} / ${_batch.total}',
                     style: theme.textTheme.bodySmall?.copyWith(
                       fontWeight: FontWeight.w900,
                       color: theme.colorScheme.onSurfaceVariant,
@@ -953,130 +1385,281 @@ class _RandomDrawPageState extends State<RandomDrawPage> with SingleTickerProvid
             ],
           ),
         ),
+        if (_batch.running && _batch.total > 0)
+          LinearProgressIndicator(
+            value: _batch.done / _batch.total,
+            minHeight: 2,
+            borderRadius: BorderRadius.zero,
+          ),
         const Divider(height: 1),
         Expanded(child: _buildBoard(theme)),
       ],
+    ),
     );
   }
 
+  Widget _buildStreakChip(ThemeData theme) {
+    if (_jackpotStreak <= 0) return const SizedBox.shrink();
+
+    final isDone = _todayJackpotDone;
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 300),
+      child: Container(
+        key: ValueKey('streak_$_jackpotStreak$isDone'),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: isDone
+              ? const Color(0xFFFFD700).withAlpha(40)
+              : theme.colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: isDone
+                ? const Color(0xFFFFD700).withAlpha(180)
+                : theme.dividerColor,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              isDone
+                  ? '🔥 $_jackpotStreak일 연속 잭팟 달성! 🏆'
+                  : '🔥 $_jackpotStreak일 연속 중… 오늘도?',
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.w900,
+                color: isDone
+                    ? const Color(0xFFB8860B)
+                    : theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            if (_bestJackpotStreak > 1) ...[
+              const SizedBox(width: 8),
+              Text(
+                '최고 $_bestJackpotStreak일',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 화면 너비만으로 열 수 결정 (스켈레톤 / 폴백용)
+  int _gridColumnCount(double maxWidth) {
+    if (maxWidth < 320) return 2;
+    if (maxWidth < 480) return 3;
+    if (maxWidth < 720) return 4;
+    if (maxWidth < 1024) return 5;
+    if (maxWidth < 1280) return 6;
+    return 7;
+  }
+
+  /// 너비·높이·카드 수를 함께 고려해 최적 그리드 레이아웃을 계산합니다.
+  ///
+  /// - [cols]: 열 수 (항상 카드 수 이하 → 오른쪽 빈 여백 없음)
+  /// - [aspectRatio]: childAspectRatio (가용 높이를 꽉 채우도록 조정)
+  /// - [scrollable]: 콘텐츠가 가용 높이를 초과하면 true
+  ({int cols, double aspectRatio, bool scrollable}) _calcGridLayout(
+    double width,
+    double height,
+    int count,
+  ) {
+    const spacing = 12.0;
+    const minCardWidth = 90.0; // 이보다 좁으면 글자/이미지 판독 불가
+
+    if (count <= 0) {
+      return (cols: 1, aspectRatio: AppConstants.ygoCardAspectRatio, scrollable: false);
+    }
+
+    // 높이가 무한(unbounded)이면 너비 기반 폴백 사용
+    if (height.isInfinite || height <= 0) {
+      final cols = min(count, _gridColumnCount(width));
+      return (cols: cols, aspectRatio: AppConstants.ygoCardAspectRatio, scrollable: true);
+    }
+
+    // cols=1 → count 방향으로 늘리면서 모든 행이 가용 높이에 들어오는 최소 열 수 탐색
+    for (int cols = 1; cols <= count; cols++) {
+      final cardW = (width - spacing * (cols - 1)) / cols;
+      if (cardW < minCardWidth) break; // 너무 좁아지면 중단 → 폴백
+
+      final rows = (count / cols).ceil();
+      final cardH = cardW / AppConstants.ygoCardAspectRatio;
+      final totalH = rows * cardH + spacing * (rows - 1);
+
+      if (totalH <= height) {
+        // 자연 비율로도 들어감 → 남은 세로 공간을 채우도록 비율 조정
+        final idealH = (height - spacing * (rows - 1)) / rows;
+        // 카드가 자연 비율보다 더 세로로 길어지지 않도록 하한 클램프
+        final ar = (cardW / idealH).clamp(0.5, AppConstants.ygoCardAspectRatio);
+        return (cols: cols, aspectRatio: ar, scrollable: false);
+      }
+    }
+
+    // 어떤 열 수로도 스크롤 없이 불가능 → 너비 기반, 오른쪽 여백만 제거
+    final cols = min(count, _gridColumnCount(width));
+    return (cols: cols, aspectRatio: AppConstants.ygoCardAspectRatio, scrollable: true);
+  }
+
   Widget _buildBoard(ThemeData theme) {
+    final Widget child;
+
     if (_error != null) {
-      return Center(
+      child = Center(
+        key: const ValueKey('error'),
         child: Padding(
           padding: const EdgeInsets.all(24),
-          child: Text(
-            '에러: $_error',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.error,
-            ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.error_outline, size: 48, color: theme.colorScheme.error),
+              const SizedBox(height: 12),
+              Text(
+                _error!,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.error,
+                ),
+              ),
+              const SizedBox(height: 16),
+              FilledButton.tonal(
+                onPressed: () {
+                  setState(() => _error = null);
+                  _runDraw(showPopup: true);
+                },
+                child: const Text(AppStrings.retryButton),
+              ),
+            ],
           ),
         ),
       );
-    }
-
-    if (!_hasGenerated) {
-      return Center(
+    } else if (!_hasGenerated) {
+      child = Center(
+        key: const ValueKey('initial'),
         child: Padding(
           padding: const EdgeInsets.all(24),
-          child: Text(
-            '버튼 한 번 누르고\n뭐 나오는지 보자 😎',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w800,
-            ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.casino_outlined, size: 52, color: theme.colorScheme.primary.withAlpha(160)),
+              const SizedBox(height: 16),
+              Text(
+                AppStrings.initialPrompt,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
           ),
         ),
       );
-    }
-
-    if (_loading && _cards.isEmpty) {
-      return Padding(
+    } else if (_loading && _cards.isEmpty) {
+      child = Padding(
+        key: const ValueKey('skeleton'),
         padding: const EdgeInsets.all(16),
         child: LayoutBuilder(
           builder: (context, c) {
-            var crossAxisCount = 5;
-            if (c.maxWidth < 400) {
-              crossAxisCount = 2;
-            } else if (c.maxWidth < 700) {
-              crossAxisCount = 3;
-            }
-            else if (c.maxWidth < 1000) {
-              crossAxisCount = 4;
-            }
-            return SkeletonGrid(crossAxisCount: crossAxisCount);
+            return SkeletonGrid(
+              crossAxisCount: min(_count, _gridColumnCount(c.maxWidth)),
+              itemCount: _count,
+            );
+          },
+        ),
+      );
+    } else if (_cards.isEmpty) {
+      child = Center(
+        key: const ValueKey('empty'),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.search_off, size: 48, color: theme.colorScheme.onSurfaceVariant.withAlpha(160)),
+              const SizedBox(height: 12),
+              Text(
+                AppStrings.emptyCardMessage,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyLarge,
+              ),
+              const SizedBox(height: 16),
+              FilledButton.tonal(
+                onPressed: _loading ? null : () => _runDraw(showPopup: true),
+                child: const Text(AppStrings.redrawButton),
+              ),
+            ],
+          ),
+        ),
+      );
+    } else {
+      child = Padding(
+        key: const ValueKey('grid'),
+        padding: const EdgeInsets.all(16),
+        child: LayoutBuilder(
+          builder: (context, c) {
+            final layout = _calcGridLayout(c.maxWidth, c.maxHeight, _cards.length);
+
+            return RepaintBoundary(
+              child: ValueListenableBuilder<List<int>>(
+                valueListenable: _reelNotifier,
+                builder: (context, reelIndex, _) {
+                  return GridView.builder(
+                    controller: _gridScrollController,
+                    physics: layout.scrollable
+                        ? null
+                        : const NeverScrollableScrollPhysics(),
+                    itemCount: _cards.length,
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: layout.cols,
+                      childAspectRatio: layout.aspectRatio,
+                      crossAxisSpacing: 12,
+                      mainAxisSpacing: 12,
+                    ),
+                    itemBuilder: (context, i) {
+                      final finalCard = _cards[i];
+                      final spinningThisCard = _spinning && !_stopped.contains(i);
+
+                      YgoCard displayCard = finalCard;
+                      YgoCard nextDisplayCard = finalCard;
+
+                      if (spinningThisCard &&
+                          reelIndex.isNotEmpty &&
+                          reelIndex.length == _cards.length &&
+                          _cards.isNotEmpty) {
+                        final idx = reelIndex[i];
+                        final nextIdx = (idx + 1) % _cards.length;
+                        displayCard = _cards[idx];
+                        nextDisplayCard = _cards[nextIdx];
+                      }
+
+                      return CardTile(
+                        key: ValueKey(finalCard.id),
+                        finalCard: finalCard,
+                        displayCard: displayCard,
+                        nextDisplayCard: nextDisplayCard,
+                        onTap: () {},
+                        spinning: spinningThisCard,
+                        pulse: _spinController,
+                        isJackpotHit: _isBossJackpot &&
+                            (_todayRule?.targets.any((t) => t.cardId == finalCard.id) ?? false),
+                      );
+                    },
+                  );
+                },
+              ),
+            );
           },
         ),
       );
     }
 
-    if (_cards.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(
-            '카드가 없어요.\n다시 뽑아볼까요?',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodyLarge,
-          ),
-        ),
-      );
-    }
-
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: LayoutBuilder(
-        builder: (context, c) {
-          var crossAxisCount = 5;
-          if (c.maxWidth < 400) {
-            crossAxisCount = 2;
-          }
-          else if (c.maxWidth < 700) {
-            crossAxisCount = 3;
-          }
-          else if (c.maxWidth < 1000) {
-            crossAxisCount = 4;
-          }
-
-          return GridView.builder(
-            controller: _gridScrollController,
-            itemCount: _cards.length,
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: crossAxisCount,
-              childAspectRatio: 0.7,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-            ),
-            itemBuilder: (context, i) {
-              final finalCard = _cards[i];
-              final spinningThisCard = _spinning && !_stopped.contains(i);
-
-              YgoCard displayCard = finalCard;
-              YgoCard nextDisplayCard = finalCard;
-
-              if (spinningThisCard &&
-                  _reelIndex.isNotEmpty &&
-                  _reelIndex.length == _cards.length &&
-                  _cards.isNotEmpty) {
-                final idx = _reelIndex[i];
-                final nextIdx = (idx + 1) % _cards.length;
-                displayCard = _cards[idx];
-                nextDisplayCard = _cards[nextIdx];
-              }
-
-              return CardTile(
-                key: ValueKey(finalCard.id),
-                finalCard: finalCard,
-                displayCard: displayCard,
-                nextDisplayCard: nextDisplayCard,
-                onTap: () {},
-                spinning: spinningThisCard,
-                pulse: _spinController,
-              );
-            },
-          );
-        },
-      ),
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 200),
+      switchInCurve: Curves.easeOut,
+      switchOutCurve: Curves.easeIn,
+      child: child,
     );
   }
 
@@ -1209,34 +1792,34 @@ class _RandomDrawPageState extends State<RandomDrawPage> with SingleTickerProvid
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '모드 선택',
+                      AppStrings.modePickerTitle,
                       style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900),
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      '카드 수를 고정 모드로 단순화했어. (3/5/7)',
+                      AppStrings.modePickerSubtitle,
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
                     const SizedBox(height: 12),
                     modeCard(
-                      title: '도전 모드 (3장)',
-                      desc: '짧고 날카롭게. 잭팟이 진짜 어렵다 🔥',
+                      title: AppStrings.modeChallengeTitle,
+                      desc: AppStrings.modeChallengeDesc,
                       value: 3,
                       icon: Icons.whatshot,
                     ),
                     const SizedBox(height: 10),
                     modeCard(
-                      title: '기본 모드 (5장)',
-                      desc: '지금 너가 말한 “제일 맛있는 밸런스” 🎰',
+                      title: AppStrings.modeDefaultTitle,
+                      desc: AppStrings.modeDefaultDesc,
                       value: 5,
                       icon: Icons.casino,
                     ),
                     const SizedBox(height: 10),
                     modeCard(
-                      title: '편안 모드 (7장)',
-                      desc: '조금 더 자주 맞추고 싶은 날 🏆',
+                      title: AppStrings.modeComfortTitle,
+                      desc: AppStrings.modeComfortDesc,
                       value: 7,
                       icon: Icons.emoji_events,
                     ),
@@ -1246,7 +1829,7 @@ class _RandomDrawPageState extends State<RandomDrawPage> with SingleTickerProvid
                         Expanded(
                           child: OutlinedButton(
                             onPressed: () => setSheetState(() => tCount = 5),
-                            child: const Text('기본(5)로'),
+                            child: const Text(AppStrings.modeResetButton),
                           ),
                         ),
                         const SizedBox(width: 12),

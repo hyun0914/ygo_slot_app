@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/app_strings.dart';
 import '../../domain/daily_slot_rule.dart';
 import '../slot_ui/slot_ui_helpers.dart';
 
+import 'skeleton.dart';
 import 'slot_card_cell.dart';
 
 class SlotHeader extends StatelessWidget {
@@ -21,9 +23,24 @@ class SlotHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    if (rule == null) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 250),
+      switchInCurve: Curves.easeOut,
+      switchOutCurve: Curves.easeIn,
+      transitionBuilder: (child, animation) =>
+          FadeTransition(opacity: animation, child: child),
+      child: rule == null
+          ? _buildSkeleton(theme)
+          : _buildLoaded(theme),
+    );
+  }
+
+  Widget _buildSkeleton(ThemeData theme) {
+    return Semantics(
+      key: const ValueKey('header_loading'),
+      label: AppStrings.headerLoading,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
         decoration: BoxDecoration(
           color: theme.colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(16),
@@ -31,23 +48,45 @@ class SlotHeader extends StatelessWidget {
         ),
         child: Row(
           children: [
-            const Icon(Icons.casino, size: 18),
+            // DAILY xN 배지 shimmer
+            ShimmerBox(
+              width: 72,
+              height: 28,
+              borderRadius: BorderRadius.circular(999),
+            ),
+            const SizedBox(width: 8),
+            // 데이 종류 칩 shimmer
+            ShimmerBox(
+              width: 52,
+              height: 28,
+              borderRadius: BorderRadius.circular(999),
+            ),
             const SizedBox(width: 10),
+            // 3칸 슬롯 셀 shimmer
             Expanded(
-              child: Text(
-                '오늘의 슬롯 타겟 준비 중… (첫 뽑기 후 고정)',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                  fontWeight: FontWeight.w700,
-                ),
+              child: Row(
+                children: List.generate(3, (i) {
+                  return Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.only(left: i == 0 ? 0 : 8),
+                      child: ShimmerBox(
+                        height: 62,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                  );
+                }),
               ),
             ),
           ],
         ),
-      );
-    }
+      ),
+    );
+  }
 
+  Widget _buildLoaded(ThemeData theme) {
     return Container(
+      key: ValueKey(rule!.kind),
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHighest,
@@ -82,31 +121,34 @@ class SlotHeader extends StatelessWidget {
 
           // 오늘 kind 칩
           const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: dayKindChipBg(theme, rule!.kind),
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: dayKindChipBorder(theme, rule!.kind)),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  dayKindIcon(rule!.kind),
-                  size: 14,
-                  color: dayKindChipFg(theme, rule!.kind),
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  dayKindLabel(rule!.kind),
-                  style: theme.textTheme.labelSmall?.copyWith(
+          Semantics(
+            label: '오늘의 모드: ${dayKindLabel(rule!.kind)}',
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: dayKindChipBg(theme, rule!.kind),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: dayKindChipBorder(theme, rule!.kind)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    dayKindIcon(rule!.kind),
+                    size: 14,
                     color: dayKindChipFg(theme, rule!.kind),
-                    fontWeight: FontWeight.w900,
-                    height: 1.0,
                   ),
-                ),
-              ],
+                  const SizedBox(width: 6),
+                  Text(
+                    dayKindLabel(rule!.kind),
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: dayKindChipFg(theme, rule!.kind),
+                      fontWeight: FontWeight.w900,
+                      height: 1.0,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
 
@@ -137,7 +179,9 @@ class SlotHeader extends StatelessWidget {
                       difficulty: isExact
                           ? SlotDifficulty.hard
                           : difficultyForCategoryKey(t.category ?? ''),
-                      onTapPreview: isExact ? () => onTapExactTarget?.call(t) : null,
+                      onTapPreview:
+                          isExact ? () => onTapExactTarget?.call(t) : null,
+                      heroTag: isExact ? 'slot_card_${t.cardId}' : null,
                     ),
                   ),
                 );

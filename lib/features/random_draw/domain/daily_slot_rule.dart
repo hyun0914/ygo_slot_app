@@ -89,8 +89,7 @@ List<_CatCandidate> _buildCategoryCandidatesWithRatio(List<YgoCard> pool) {
         addKey('atk:0-1500');
       } else if (atk <= 2500) {
         addKey('atk:1501-2500');
-      }
-      else {
+      } else {
         addKey('atk:2501+');
       }
     }
@@ -213,6 +212,7 @@ DailySlotRule buildTodayRule(
     final cats = _pickCatsWithKindDiversity(catCandidates, r, 2);
 
     if (exactPicked == null) {
+      debugPrint('[DailyRule] spotlight → normal 폴백: 이미지 있는 카드가 풀에 없음');
       final fallback = _pickCatsWithKindDiversity(catCandidates, r, 3);
       targets = fallback.map((c) => SlotTarget.category(c.key)).toList();
       return DailySlotRule(dateKey: key, kind: DayKind.normal, targets: targets);
@@ -228,6 +228,7 @@ DailySlotRule buildTodayRule(
     // boss
     final picked = _pickUniqueCards(exactPool, r, 3);
     if (picked.isEmpty) {
+      debugPrint('[DailyRule] boss → normal 폴백: exact 카드를 풀에서 찾지 못함');
       final fallback = _pickCatsWithKindDiversity(catCandidates, r, 3);
       targets = fallback.map((c) => SlotTarget.category(c.key)).toList();
       return DailySlotRule(dateKey: key, kind: DayKind.normal, targets: targets);

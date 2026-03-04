@@ -1,13 +1,78 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/app_constants.dart';
+
+/// 임의 크기의 shimmer 박스. 헤더 스켈레톤 등 다양한 곳에서 재사용.
+class ShimmerBox extends StatefulWidget {
+  final double? width;
+  final double height;
+  final BorderRadius borderRadius;
+
+  const ShimmerBox({
+    super.key,
+    this.width,
+    required this.height,
+    this.borderRadius = const BorderRadius.all(Radius.circular(8)),
+  });
+
+  @override
+  State<ShimmerBox> createState() => _ShimmerBoxState();
+}
+
+class _ShimmerBoxState extends State<ShimmerBox>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: AppConstants.shimmerDuration,
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final base = theme.colorScheme.surfaceContainerHighest;
+    final highlight = theme.colorScheme.surface;
+
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        final t = _controller.value * 3 - 1;
+        return SizedBox(
+          width: widget.width,
+          height: widget.height,
+          child: ClipRRect(
+            borderRadius: widget.borderRadius,
+            child: CustomPaint(
+              painter: _ShimmerPainter(t: t, base: base, highlight: highlight),
+              child: Container(color: base),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 class SkeletonGrid extends StatelessWidget {
   final int crossAxisCount;
-  const SkeletonGrid({super.key, required this.crossAxisCount});
+  final int itemCount;
+  const SkeletonGrid({super.key, required this.crossAxisCount, required this.itemCount});
 
   @override
   Widget build(BuildContext context) {
     return GridView.builder(
-      itemCount: crossAxisCount,
+      itemCount: itemCount,
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: crossAxisCount,
         childAspectRatio: 0.7,
@@ -35,7 +100,7 @@ class _SkeletonTileState extends State<_SkeletonTile>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1200),
+      duration: AppConstants.shimmerDuration,
     )..repeat();
   }
 

@@ -1,12 +1,14 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 class YgoApiClient {
   static const _baseUrl = 'https://db.ygoprodeck.com/api/v7/cardinfo.php';
+  static const _timeout = Duration(seconds: 15);
 
   Future<List<dynamic>> fetchCards(Map<String, String> params) async {
     final uri = Uri.parse(_baseUrl).replace(queryParameters: params);
-    final response = await http.get(uri);
+    final response = await http.get(uri).timeout(_timeout);
 
     if (response.statusCode != 200) {
       String? errorText;
@@ -15,7 +17,9 @@ class YgoApiClient {
         if (json is Map && json['error'] != null) {
           errorText = json['error'].toString();
         }
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('[YgoApiClient] JSON 파싱 실패: $e');
+      }
 
       if (response.statusCode == 400 &&
           errorText != null &&

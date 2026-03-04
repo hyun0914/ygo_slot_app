@@ -138,7 +138,7 @@ String dayKindLabel(DayKind k) {
     case DayKind.normal:
       return '일반';
     case DayKind.spotlight:
-      return '스포트라이트';
+      return '특별';
     case DayKind.boss:
       return '보스';
   }

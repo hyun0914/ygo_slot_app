@@ -16,15 +16,23 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.blue,
+          seedColor: const Color(0xFF311B92), // Deep Purple 900
           brightness: Brightness.light,
+        ),
+        appBarTheme: const AppBarTheme(
+          centerTitle: true,
+          scrolledUnderElevation: 2,
         ),
       ),
       darkTheme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.blue,
+          seedColor: const Color(0xFF4527A0), // Deep Purple 800 — 다크모드 대비 확보
           brightness: Brightness.dark,
+        ),
+        appBarTheme: const AppBarTheme(
+          centerTitle: true,
+          scrolledUnderElevation: 2,
         ),
       ),
 

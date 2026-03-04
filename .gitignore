@@ -94,3 +94,8 @@ android/key.properties
 *.pem
 *.p12
 *.pfx
+
+# ------------------------------
+# Claude Code (local only)
+# ------------------------------
+.claude/

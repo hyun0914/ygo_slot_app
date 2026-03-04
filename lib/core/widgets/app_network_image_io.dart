@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'ygo_card_back.dart';
+
 class AppNetworkImage extends StatelessWidget {
   final String url;
   final BoxFit fit;
@@ -22,6 +24,10 @@ class AppNetworkImage extends StatelessWidget {
   Widget build(BuildContext context) {
     final fixedUrl = url.replaceFirst('http://', 'https://').trim();
 
+    if (fixedUrl.isEmpty) {
+      return fallback?.call(context) ?? const SizedBox.shrink();
+    }
+
     Widget child = Image.network(
       fixedUrl,
       fit: fit,
@@ -31,7 +37,7 @@ class AppNetworkImage extends StatelessWidget {
       fallback?.call(context) ?? const Icon(Icons.broken_image),
       loadingBuilder: (context, child, progress) {
         if (progress == null) return child;
-        return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+        return fallback?.call(context) ?? const YgoCardBack(label: 'YGO');
       },
     );
 
