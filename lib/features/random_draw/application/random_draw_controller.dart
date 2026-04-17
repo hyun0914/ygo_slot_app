@@ -15,6 +15,8 @@ class RandomDrawController {
 
   RandomDrawController(this.apiClient);
 
+  List<YgoCard> get cachedDailyPool => List.unmodifiable(_dailyPool);
+
   Future<List<YgoCard>> generateDraw(DrawFilter filter) async {
     final data = await apiClient.fetchCards(filter.toApiParams());
     final cards = data.map((e) => YgoCard.fromJson(e as Map<String, dynamic>)).toList();

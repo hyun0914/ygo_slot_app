@@ -12,6 +12,7 @@ class SlotResultDialog extends StatelessWidget {
   final DailySlotRule rule;
   final List<YgoCard> cards;
   final bool isBossJackpot;
+  final VoidCallback? onShare;
 
   const SlotResultDialog({
     super.key,
@@ -22,6 +23,7 @@ class SlotResultDialog extends StatelessWidget {
     required this.rule,
     required this.cards,
     this.isBossJackpot = false,
+    this.onShare,
   });
 
   static const _kGold = Color(0xFFFFD700);
@@ -184,6 +186,15 @@ class SlotResultDialog extends StatelessWidget {
         ],
       ),
       actions: [
+        if (onShare != null)
+          TextButton.icon(
+            onPressed: () {
+              Navigator.of(context).pop();
+              onShare!();
+            },
+            icon: const Icon(Icons.share, size: 16),
+            label: const Text('공유'),
+          ),
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
           style: isBossJackpot

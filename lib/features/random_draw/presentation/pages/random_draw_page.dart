@@ -13,14 +13,39 @@ import '../../../../core/api_client.dart';
 import '../../../../core/app_constants.dart';
 import '../../../../core/app_strings.dart';
 import '../../../../core/models/ygopro_card.dart';
+import '../../../../core/services/auth_service.dart';
+import '../../../../core/services/cloud_sync_service.dart';
+import '../../../../core/services/notification_service.dart';
+import '../../../../core/services/share_service.dart';
+import '../../../../core/services/sound_service.dart';
 import '../../../../core/widgets/app_network_image.dart';
 import '../../../../core/widgets/ygo_card_back.dart';
+import '../../../achievements/application/achievement_store.dart';
+import '../../../favorites/application/favorites_store.dart';
+import '../../../favorites/presentation/pages/favorites_page.dart';
+import '../../../stats/presentation/pages/stats_page.dart';
+import '../../../achievements/domain/achievement.dart';
+import '../../../achievements/presentation/pages/achievements_page.dart';
+import '../../../battle/presentation/pages/battle_page.dart';
+import '../../../collection/application/collection_store.dart';
+import '../../../collection/presentation/pages/collection_page.dart';
+import '../../../level/application/level_store.dart';
+import '../../../level/domain/level_config.dart';
+import '../../../level/presentation/widgets/level_badge.dart';
+import '../../../level/presentation/widgets/level_up_overlay.dart';
+import '../../../weekly_challenge/application/weekly_challenge_store.dart';
+import '../../../weekly_challenge/domain/weekly_challenge.dart';
+import '../../../weekly_challenge/presentation/widgets/weekly_challenge_widget.dart';
 import '../../application/draw_history_store.dart';
+import '../../application/draw_stats_store.dart';
+import '../../application/play_log_store.dart';
 import '../../application/random_draw_controller.dart';
 import '../../domain/draw_filter.dart';
 import '../../domain/daily_slot_rule.dart';
 import '../../domain/draw_history_entry.dart';
+import '../widgets/boss_countdown_widget.dart';
 import '../widgets/landing.dart';
+import '../widgets/streak_calendar_widget.dart';
 import 'history_page.dart';
 import 'probability_page.dart';
 import '../widgets/slot_header.dart';
@@ -77,6 +102,29 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
   int _bestJackpotStreak = 0;
   int _totalJackpots = 0;
   bool _todayJackpotDone = false;
+
+  // 통계 / 컬렉션
+  int _totalDraws = 0;
+  int _collectionSize = 0;
+
+  // 도전과제 토스트 큐
+  final List<Achievement> _achievementQueue = [];
+  bool _showingAchievement = false;
+  // 배치 중 누적된 도전과제 (배치 완료 후 표시)
+  final List<Achievement> _pendingBatchAchievements = [];
+
+  // 레벨 / XP
+  int _currentXp = 0;
+
+  // 레벨업 오버레이 큐
+  final List<int> _levelUpQueue = [];
+  bool _showingLevelUp = false;
+
+  // 위클리 챌린지
+  late WeeklyChallengeDef _weeklyChallenge;
+
+  // 즐겨찾기
+  Set<int> _favoriteIds = {};
 
   // 결과
   List<YgoCard> _cards = [];
@@ -160,6 +208,8 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
     _flashController   = AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
     _bossTextController= AnimationController(vsync: this, duration: const Duration(milliseconds: 2500));
 
+    _weeklyChallenge = pickWeeklyChallenge(now: DateTime.now());
+
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _loadTodayRuleFromPrefs(count: _count);
       if (!mounted) return;
@@ -167,6 +217,24 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
         await _ensureTodayRuleFromDailyPool();
       }
       await _loadStreak();
+      _totalDraws = await DrawStatsStore.getTotalDraws();
+      final col = await CollectionStore.loadAll();
+      final xp = await LevelStore.getTotalXp();
+      final favIds = await FavoritesStore.loadIds();
+      if (mounted) {
+        setState(() {
+          _collectionSize = col.length;
+          _currentXp = xp;
+          _favoriteIds = favIds;
+        });
+      }
+      // 알림: 오늘 아직 안 뽑았으면 브라우저 알림
+      if (NotificationService.isSupported) {
+        final playLog = await PlayLogStore.load();
+        final todayStr = _todayKey(DateTime.now());
+        final playedToday = playLog.playDates.contains(todayStr);
+        await NotificationService.showIfNotPlayedToday(playedToday: playedToday);
+      }
     });
   }
 
@@ -296,6 +364,7 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
       _isBossJackpot = false;
     });
 
+    SoundService.playSpinStart();
     _spinController.repeat();
 
     final filter = _buildFilter();
@@ -342,6 +411,7 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
 
         final idx = _finishOrder[cursor];
         setState(() => _stopped.add(idx));
+        SoundService.playReelTick();
         _haptic(HapticFeedback.selectionClick);
 
         cursor++;
@@ -390,15 +460,27 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
       _loading = false;
     });
 
-    if (!showPopup) return;
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
       final hits = countSlotHits(cards: _cards, rule: _todayRule);
-      if (hits > 0) {
-        _showSingleHitPopup(hits);
+
+      // Sound feedback
+      if (hits >= 3) {
+        if (_todayRule?.kind == DayKind.boss) {
+          SoundService.playBossJackpot();
+        } else {
+          SoundService.playJackpot();
+        }
+      } else if (hits > 0) {
+        SoundService.playHit();
       }
-      _saveDrawHistory(hits);
+
+      if (showPopup) {
+        if (hits > 0) _showSingleHitPopup(hits);
+        _saveDrawHistory(hits);
+      }
+
+      await _onDrawComplete(hits, isBatch: !showPopup);
     });
   }
 
@@ -512,6 +594,16 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
     setState(() => _batch.running = false);
 
     if (cancelled) return;
+
+    // 배치 완료 후 레벨업 + 도전과제 표시
+    if (_levelUpQueue.isNotEmpty) _processLevelUpQueue();
+    if (_pendingBatchAchievements.isNotEmpty) {
+      _achievementQueue.addAll(_pendingBatchAchievements);
+      _pendingBatchAchievements.clear();
+      _processAchievementQueue();
+    }
+
+    CloudSyncService.uploadAfterDraw();
     _showBatchSummaryPopup();
   }
 
@@ -538,6 +630,7 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
     _confettiBossRight.play();
     _flashController.forward(from: 0);
     _bossTextController.forward(from: 0);
+    SoundService.playBossJackpot();
     _haptic(HapticFeedback.heavyImpact);
     await Future.delayed(const Duration(milliseconds: 120));
     _haptic(HapticFeedback.heavyImpact);
@@ -593,6 +686,7 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
         rule: rule,
         cards: _cards,
         isBossJackpot: isBoss,
+        onShare: () => _shareResult(hits),
       ),
       transitionBuilder: (ctx, animation, _, child) {
         final beginScale = isBoss ? 0.3 : 0.75;
@@ -786,6 +880,335 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
           .toList(),
     );
     DrawHistoryStore.addEntry(entry); // fire-and-forget
+  }
+
+  Future<void> _onDrawComplete(int hits, {required bool isBatch}) async {
+    if (_cards.isEmpty) return;
+
+    // 컬렉션 업데이트
+    final newSize = await CollectionStore.addCards(
+      _cards.map((c) => (id: c.id, name: c.name, imageUrl: c.imageUrl)).toList(),
+    );
+
+    // 총 뽑기 횟수
+    final newDraws = await DrawStatsStore.increment();
+
+    // 플레이 로그 (잭팟 여부)
+    final isJackpot = hits >= 3;
+    await PlayLogStore.recordPlay(jackpot: isJackpot);
+
+    // 도전과제 체크
+    final event = AchievementEvent(
+      drew: true,
+      hitOccurred: hits > 0,
+      jackpot: isJackpot,
+      bossJackpot: isJackpot && _todayRule?.kind == DayKind.boss,
+      mode: _count,
+      isBatch: isBatch,
+      currentStreak: _jackpotStreak,
+      totalJackpots: _totalJackpots,
+      totalDraws: newDraws,
+      collectionSize: newSize,
+    );
+    final newAchievements = await AchievementStore.checkAndUnlock(event);
+
+    // XP 적립
+    final xpGain = calcXpGain(
+      hits: hits,
+      bossJackpot: isJackpot && _todayRule?.kind == DayKind.boss,
+      isBatch: isBatch,
+    );
+    final lvResult = await LevelStore.addXp(xpGain);
+
+    // 위클리 챌린지 완료 체크
+    if (_weeklyChallenge.isCompleted(_cards)) {
+      await WeeklyChallengeStore.recordCompletion();
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _totalDraws = newDraws;
+      _collectionSize = newSize;
+      _currentXp = lvResult.xp;
+    });
+    debugPrint('[Stats] 총 뽑기: $_totalDraws회, 도감: $_collectionSize종, Lv.${lvResult.level}');
+
+    // 레벨업 알림
+    if (lvResult.level > lvResult.oldLevel) {
+      for (int lv = lvResult.oldLevel + 1; lv <= lvResult.level; lv++) {
+        _levelUpQueue.add(lv);
+      }
+      if (!isBatch) _processLevelUpQueue();
+    }
+
+    if (newAchievements.isNotEmpty) {
+      if (isBatch) {
+        _pendingBatchAchievements.addAll(newAchievements);
+      } else {
+        _achievementQueue.addAll(newAchievements);
+        _processAchievementQueue();
+      }
+    }
+
+    if (!isBatch) CloudSyncService.uploadAfterDraw();
+  }
+
+  void _processLevelUpQueue() {
+    if (_showingLevelUp || _levelUpQueue.isEmpty) return;
+    if (!mounted) return;
+    setState(() => _showingLevelUp = true);
+  }
+
+  void _onLevelUpDone() {
+    if (!mounted) return;
+    setState(() {
+      if (_levelUpQueue.isNotEmpty) _levelUpQueue.removeAt(0);
+      _showingLevelUp = false;
+    });
+    if (_levelUpQueue.isNotEmpty) {
+      Future.delayed(const Duration(milliseconds: 200), () {
+        if (mounted) setState(() => _showingLevelUp = true);
+      });
+    }
+  }
+
+  void _processAchievementQueue() {
+    if (_showingAchievement || _achievementQueue.isEmpty) return;
+    if (!mounted) return;
+    setState(() => _showingAchievement = true);
+  }
+
+  void _onAchievementToastDone() {
+    if (!mounted) return;
+    setState(() {
+      if (_achievementQueue.isNotEmpty) _achievementQueue.removeAt(0);
+      _showingAchievement = false;
+    });
+    // show next
+    if (_achievementQueue.isNotEmpty) {
+      Future.delayed(const Duration(milliseconds: 200), () {
+        if (mounted) setState(() => _showingAchievement = true);
+      });
+    }
+  }
+
+  Future<void> _toggleFavorite(int cardId) async {
+    final isNow = await FavoritesStore.toggle(cardId);
+    if (!mounted) return;
+    setState(() {
+      if (isNow) {
+        _favoriteIds.add(cardId);
+      } else {
+        _favoriteIds.remove(cardId);
+      }
+    });
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(isNow ? '🔖 즐겨찾기에 추가했습니다' : '즐겨찾기에서 제거했습니다'),
+          duration: const Duration(seconds: 1),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  void _shareResult(int hits) {
+    if (_cards.isEmpty) return;
+    final rule = _todayRule;
+    final dayType = rule?.kind == DayKind.boss
+        ? '👑 보스데이'
+        : rule?.kind == DayKind.spotlight
+            ? '✨ 스포트라이트'
+            : '🎯 일반';
+    final hitEmoji = hits >= 3 ? '🎰 잭팟!' : hits == 2 ? '🔥 2히트' : hits == 1 ? '✨ 1히트' : '💨 미스';
+    final cardNames = _cards.take(3).map((c) => c.name).join(', ');
+    final text =
+        '유희왕 슬롯 결과\n'
+        '$dayType | $hitEmoji\n'
+        '뽑은 카드: $cardNames${_cards.length > 3 ? ' 외 ${_cards.length - 3}장' : ''}\n'
+        '🔥 연속 잭팟: $_jackpotStreak일';
+    _showShareDialog(text);
+  }
+
+  void _showShareDialog(String text) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('📤 결과 공유'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(ctx).colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(text, style: Theme.of(ctx).textTheme.bodyMedium),
+            ),
+            const SizedBox(height: 12),
+            if (ShareService.isClipboardSupported)
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () async {
+                    final messenger = ScaffoldMessenger.of(context);
+                    final ok = await ShareService.copyToClipboard(text);
+                    if (ctx.mounted) {
+                      Navigator.of(ctx).pop();
+                      messenger.showSnackBar(
+                        SnackBar(
+                          content: Text(ok ? '✅ 클립보드에 복사했습니다' : '복사에 실패했습니다'),
+                          duration: const Duration(seconds: 2),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    }
+                  },
+                  icon: const Icon(Icons.copy),
+                  label: const Text('클립보드에 복사'),
+                ),
+              ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('닫기'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showCardDetail(YgoCard card) {
+    final theme = Theme.of(context);
+
+    showModalBottomSheet(
+      context: context,
+      useSafeArea: true,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) {
+          final favNow = _favoriteIds.contains(card.id);
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: AppNetworkImage(
+                          card.imageUrl,
+                          width: 80,
+                          height: 116,
+                          fit: BoxFit.cover,
+                          fallback: (_) => const YgoCardBack(label: 'YGO'),
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(card.name, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 4),
+                            if (card.attribute != null) _infoRow('속성', card.attribute!),
+                            if (card.race != null) _infoRow('종족', card.race!),
+                            if (card.level != null) _infoRow('레벨', '${card.level}'),
+                            if (card.atk != null || card.def != null)
+                              _infoRow('ATK/DEF', '${card.atk ?? "-"} / ${card.def ?? "-"}'),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  if (card.desc.isNotEmpty)
+                    Text(
+                      card.desc,
+                      style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                      maxLines: 5,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            await _toggleFavorite(card.id);
+                            setSheet(() {});
+                          },
+                          icon: Icon(favNow ? Icons.bookmark : Icons.bookmark_border, size: 18),
+                          label: Text(favNow ? '즐겨찾기 해제' : '즐겨찾기'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            Navigator.of(ctx).pop();
+                            _shareResult(countSlotHits(cards: _cards, rule: _todayRule));
+                          },
+                          icon: const Icon(Icons.share, size: 18),
+                          label: const Text('결과 공유'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _infoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: Row(
+        children: [
+          Text('$label: ', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+          Text(value, style: const TextStyle(fontSize: 12)),
+        ],
+      ),
+    );
+  }
+
+  void _openNotificationSettings() {
+    if (!NotificationService.isSupported) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('이 브라우저는 알림을 지원하지 않습니다'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    showDialog(
+      context: context,
+      builder: (ctx) => _NotificationSettingsDialog(),
+    );
+  }
+
+  void _openBattle() {
+    if (_cards.isEmpty) return;
+    final pool = _controller.cachedDailyPool;
+    if (pool.isEmpty) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => BattlePage(drawnCards: _cards, pool: pool),
+      ),
+    );
   }
 
   void _openHistory() {
@@ -1065,17 +1488,79 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
           appBar: AppBar(
             title: const Text('유희왕 슬롯'),
             actions: [
-              IconButton(
-                icon: const Icon(Icons.info_outline),
-                tooltip: '확률 정보',
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const ProbabilityPage()),
+              // 레벨 배지
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: LevelBadge(xp: _currentXp, compact: true),
+              ),
+              const SizedBox(width: 4),
+              // 뮤트 토글
+              StatefulBuilder(
+                builder: (_, setBtn) => IconButton(
+                  icon: Icon(
+                    SoundService.muted ? Icons.volume_off : Icons.volume_up,
+                    size: 22,
+                  ),
+                  tooltip: SoundService.muted ? '소리 켜기' : '소리 끄기',
+                  onPressed: () {
+                    SoundService.toggleMute();
+                    setBtn(() {});
+                  },
                 ),
               ),
-              IconButton(
-                icon: const Icon(Icons.history),
-                tooltip: '뽑기 기록',
-                onPressed: _openHistory,
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.menu),
+                tooltip: '더 보기',
+                onSelected: (v) async {
+                  if (v == 'achievement') {
+                    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AchievementsPage()));
+                  } else if (v == 'collection') {
+                    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CollectionPage()));
+                  } else if (v == 'favorites') {
+                    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const FavoritesPage()));
+                  } else if (v == 'stats') {
+                    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const StatsPage()));
+                  } else if (v == 'history') {
+                    _openHistory();
+                  } else if (v == 'probability') {
+                    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ProbabilityPage()));
+                  } else if (v == 'notification') {
+                    _openNotificationSettings();
+                  } else if (v == 'sync') {
+                    final messenger = ScaffoldMessenger.of(context);
+                    await CloudSyncService.uploadAll();
+                    messenger.showSnackBar(
+                      const SnackBar(content: Text('클라우드에 저장했습니다.')),
+                    );
+                  } else if (v == 'logout') {
+                    await AuthService.signOut();
+                  }
+                },
+                itemBuilder: (_) => [
+                  const PopupMenuItem(value: 'achievement', child: Row(children: [Text('🏆', style: TextStyle(fontSize: 16)), SizedBox(width: 8), Text('도전과제')])),
+                  const PopupMenuItem(value: 'collection',  child: Row(children: [Text('📚', style: TextStyle(fontSize: 16)), SizedBox(width: 8), Text('카드 도감')])),
+                  const PopupMenuItem(value: 'favorites',   child: Row(children: [Text('🔖', style: TextStyle(fontSize: 16)), SizedBox(width: 8), Text('즐겨찾기')])),
+                  const PopupMenuItem(value: 'stats',       child: Row(children: [Text('📈', style: TextStyle(fontSize: 16)), SizedBox(width: 8), Text('통계')])),
+                  const PopupMenuItem(value: 'history',     child: Row(children: [Text('📋', style: TextStyle(fontSize: 16)), SizedBox(width: 8), Text('뽑기 기록')])),
+                  const PopupMenuItem(value: 'probability', child: Row(children: [Text('📊', style: TextStyle(fontSize: 16)), SizedBox(width: 8), Text('확률 정보')])),
+                  const PopupMenuItem(value: 'notification',child: Row(children: [Text('🔔', style: TextStyle(fontSize: 16)), SizedBox(width: 8), Text('알림 설정')])),
+                  const PopupMenuDivider(),
+                  PopupMenuItem(
+                    value: 'account_info',
+                    enabled: false,
+                    child: Row(children: [
+                      const Icon(Icons.account_circle, size: 16),
+                      const SizedBox(width: 8),
+                      Flexible(child: Text(
+                        AuthService.nickname ?? AuthService.currentUser?.email ?? '',
+                        style: const TextStyle(fontSize: 13),
+                        overflow: TextOverflow.ellipsis,
+                      )),
+                    ]),
+                  ),
+                  const PopupMenuItem(value: 'sync',   child: Row(children: [Icon(Icons.cloud_upload, size: 16), SizedBox(width: 8), Text('클라우드 저장')])),
+                  const PopupMenuItem(value: 'logout', child: Row(children: [Icon(Icons.logout, size: 16), SizedBox(width: 8), Text('로그아웃')])),
+                ],
               ),
             ],
           ),
@@ -1179,6 +1664,37 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
             ),
           ),
         ),
+        // 레벨업 오버레이
+        if (_showingLevelUp && _levelUpQueue.isNotEmpty)
+          Positioned.fill(
+            child: IgnorePointer(
+              ignoring: false,
+              child: GestureDetector(
+                onTap: _onLevelUpDone,
+                child: Container(
+                  color: Colors.black45,
+                  alignment: Alignment.center,
+                  child: LevelUpOverlay(
+                    key: ValueKey('lvup_${_levelUpQueue.first}'),
+                    newLevel: _levelUpQueue.first,
+                    onDone: _onLevelUpDone,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        // 도전과제 토스트
+        if (_showingAchievement && _achievementQueue.isNotEmpty)
+          Positioned(
+            top: MediaQuery.of(context).padding.top + kToolbarHeight + 12,
+            left: 0,
+            right: 0,
+            child: AchievementToast(
+              key: ValueKey(_achievementQueue.first.id),
+              achievement: _achievementQueue.first,
+              onDone: _onAchievementToastDone,
+            ),
+          ),
       ],
     );
   }
@@ -1211,6 +1727,10 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
                     const SizedBox(height: 14),
                     _buildStreakChip(theme),
                   ],
+                  const SizedBox(height: 10),
+                  BossCountdownWidget(count: _count),
+                  const SizedBox(height: 14),
+                  const StreakCalendarWidget(),
                   const SizedBox(height: 14),
                   Container(
                     width: double.infinity,
@@ -1258,6 +1778,33 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
             child: _buildStreakChip(theme),
           ),
+        // 위클리 챌린지
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+          child: WeeklyChallengeWidget(
+            cards: _hasGenerated && !_spinning ? _cards : null,
+          ),
+        ),
+        // 보스데이 카운트다운 + 배틀 버튼 행
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+          child: Row(
+            children: [
+              BossCountdownWidget(count: _count),
+              const Spacer(),
+              if (_hasGenerated && !_spinning && _cards.isNotEmpty)
+                TextButton.icon(
+                  onPressed: _openBattle,
+                  icon: const Icon(Icons.sports_martial_arts, size: 16),
+                  label: const Text('배틀'),
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  ),
+                ),
+            ],
+          ),
+        ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
           child: Row(
@@ -1639,7 +2186,7 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
                         finalCard: finalCard,
                         displayCard: displayCard,
                         nextDisplayCard: nextDisplayCard,
-                        onTap: () {},
+                        onTap: spinningThisCard ? () {} : () => _showCardDetail(finalCard),
                         spinning: spinningThisCard,
                         pulse: _spinController,
                         isJackpotHit: _isBossJackpot &&
@@ -1848,6 +2395,115 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
           },
         );
       },
+    );
+  }
+}
+
+// ──────────────────────────────────────────────
+// 알림 설정 다이얼로그
+// ──────────────────────────────────────────────
+class _NotificationSettingsDialog extends StatefulWidget {
+  @override
+  State<_NotificationSettingsDialog> createState() =>
+      _NotificationSettingsDialogState();
+}
+
+class _NotificationSettingsDialogState
+    extends State<_NotificationSettingsDialog> {
+  String _permission = 'default';
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPermission();
+  }
+
+  Future<void> _loadPermission() async {
+    final p = await NotificationService.getPermission();
+    if (mounted) setState(() => _permission = p);
+  }
+
+  Future<void> _request() async {
+    setState(() => _loading = true);
+    final granted = await NotificationService.requestPermission();
+    if (mounted) {
+      setState(() {
+        _permission = granted ? 'granted' : 'denied';
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    final (permLabel, permColor, permEmoji) = switch (_permission) {
+      'granted' => ('허용됨', Colors.green, '✅'),
+      'denied'  => ('거부됨', theme.colorScheme.error, '❌'),
+      _         => ('미설정', theme.colorScheme.onSurfaceVariant, '❓'),
+    };
+
+    return AlertDialog(
+      title: const Text('🔔 알림 설정'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '오늘 뽑기를 잊지 않도록 브라우저 알림을 받을 수 있습니다.',
+            style: theme.textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Text('현재 상태: $permEmoji ', style: theme.textTheme.bodyMedium),
+              Text(permLabel,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: permColor,
+                    fontWeight: FontWeight.bold,
+                  )),
+            ],
+          ),
+          if (_permission != 'granted') ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _loading ? null : _request,
+                child: _loading
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('알림 허용하기'),
+              ),
+            ),
+          ],
+          if (_permission == 'granted') ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () => NotificationService.show(
+                  '🎴 테스트 알림',
+                  body: '알림이 정상적으로 작동합니다!',
+                ),
+                icon: const Icon(Icons.notifications_active, size: 18),
+                label: const Text('테스트 알림 보내기'),
+              ),
+            ),
+          ],
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('닫기'),
+        ),
+      ],
     );
   }
 }
