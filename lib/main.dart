@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'features/auth/presentation/pages/auth_page.dart';
@@ -8,7 +9,20 @@ import 'firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  FlutterError.onError = (details) {
+    debugPrint('[Flutter Error] ${details.exceptionAsString()}');
+    debugPrint(details.stack.toString());
+  };
+  PlatformDispatcher.instance.onError = (error, stack) {
+    debugPrint('[Platform Error] $error\n$stack');
+    return true;
+  };
+  try {
+    await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform);
+  } catch (e, st) {
+    debugPrint('[Firebase Init Error] $e\n$st');
+  }
   runApp(const MyApp());
 }
 
@@ -61,6 +75,7 @@ class _AuthGate extends StatelessWidget {
             body: Center(child: CircularProgressIndicator()),
           );
         }
+        if (snapshot.hasError) return const AuthPage();
         if (snapshot.data != null) return const RandomDrawPage();
         return const AuthPage();
       },
