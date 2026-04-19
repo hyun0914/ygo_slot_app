@@ -1279,68 +1279,120 @@ class _RandomDrawPageState extends ConsumerState<RandomDrawPage> with TickerProv
           ),
         // 위클리 챌린지
         Padding(
-          padding: EdgeInsets.fromLTRB(hp, 0, hp, 4),
+          padding: EdgeInsets.fromLTRB(hp, 0, hp, compact ? 3 : 4),
           child: WeeklyChallengeWidget(
             cards: _hasGenerated && !_spinning ? _cards : null,
+            compact: compact,
           ),
         ),
-        // 보스데이 카운트다운 + 배틀 버튼 행
-        Padding(
-          padding: EdgeInsets.fromLTRB(hp, 0, hp, 4),
-          child: Row(
-            children: [
-              BossCountdownWidget(count: _count),
-              const Spacer(),
-              if (_hasGenerated && !_spinning && _cards.isNotEmpty)
-                TextButton.icon(
-                  onPressed: _openBattle,
-                  icon: const Icon(Icons.sports_martial_arts, size: 16),
-                  label: const Text('배틀'),
-                  style: TextButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        // compact: BossCountdown + 모드칩(탭가능) + 배틀 한 행
+        // wide: 보스데이 행 + 모드 행 분리
+        if (compact)
+          Padding(
+            padding: EdgeInsets.fromLTRB(hp, 0, hp, 3),
+            child: Row(
+              children: [
+                BossCountdownWidget(count: _count),
+                const SizedBox(width: 6),
+                GestureDetector(
+                  onTap: _loading || _batch.running ? null : _openCountSheet,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: theme.dividerColor),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.tune, size: 13, color: theme.colorScheme.onSurfaceVariant),
+                        const SizedBox(width: 4),
+                        Text(
+                          _currentFilterSummary(),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w900,
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-            ],
-          ),
-        ),
-        Padding(
-          padding: EdgeInsets.fromLTRB(hp, compact ? 4 : 8, hp, compact ? 4 : 8),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: theme.dividerColor),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.tune, size: 16, color: theme.colorScheme.onSurfaceVariant),
-                    const SizedBox(width: 6),
-                    Text(
-                      '모드: ${_currentFilterSummary()}',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        fontWeight: FontWeight.w900,
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
+                const Spacer(),
+                if (_hasGenerated && !_spinning && _cards.isNotEmpty)
+                  TextButton.icon(
+                    onPressed: _openBattle,
+                    icon: const Icon(Icons.sports_martial_arts, size: 14),
+                    label: const Text('배틀'),
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      textStyle: const TextStyle(fontSize: 12),
                     ),
-                  ],
-                ),
-              ),
-              const Spacer(),
-              TextButton.icon(
-                onPressed: _loading || _batch.running ? null : _openCountSheet,
-                icon: const Icon(Icons.settings, size: 18),
-                label: const Text('변경'),
-              ),
-            ],
+                  ),
+              ],
+            ),
+          )
+        else ...[
+          Padding(
+            padding: EdgeInsets.fromLTRB(hp, 0, hp, 4),
+            child: Row(
+              children: [
+                BossCountdownWidget(count: _count),
+                const Spacer(),
+                if (_hasGenerated && !_spinning && _cards.isNotEmpty)
+                  TextButton.icon(
+                    onPressed: _openBattle,
+                    icon: const Icon(Icons.sports_martial_arts, size: 16),
+                    label: const Text('배틀'),
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    ),
+                  ),
+              ],
+            ),
           ),
-        ),
+          Padding(
+            padding: EdgeInsets.fromLTRB(hp, 0, hp, 8),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: theme.dividerColor),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.tune, size: 16, color: theme.colorScheme.onSurfaceVariant),
+                      const SizedBox(width: 6),
+                      Text(
+                        '모드: ${_currentFilterSummary()}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontWeight: FontWeight.w900,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Spacer(),
+                TextButton.icon(
+                  onPressed: _loading || _batch.running ? null : _openCountSheet,
+                  icon: const Icon(Icons.settings, size: 18),
+                  label: const Text('변경'),
+                ),
+              ],
+            ),
+          ),
+        ],
         Padding(
-          padding: EdgeInsets.fromLTRB(hp, 0, hp, compact ? 6 : 10),
+          padding: EdgeInsets.fromLTRB(hp, 0, hp, compact ? 4 : 10),
           child: SizedBox(
             width: double.infinity,
             child: ElevatedButton(
@@ -1351,7 +1403,7 @@ class _RandomDrawPageState extends ConsumerState<RandomDrawPage> with TickerProv
                 await _runDraw(showPopup: true);
               },
               style: ElevatedButton.styleFrom(
-                padding: EdgeInsets.symmetric(vertical: compact ? 12 : 18),
+                padding: EdgeInsets.symmetric(vertical: compact ? 8 : 18),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(18),
                 ),
@@ -1377,7 +1429,7 @@ class _RandomDrawPageState extends ConsumerState<RandomDrawPage> with TickerProv
           ),
         ),
         Padding(
-          padding: EdgeInsets.fromLTRB(hp, 0, hp, compact ? 8 : 12),
+          padding: EdgeInsets.fromLTRB(hp, 0, hp, compact ? 4 : 12),
           child: Row(
             children: [
               Expanded(
@@ -1388,7 +1440,7 @@ class _RandomDrawPageState extends ConsumerState<RandomDrawPage> with TickerProv
                       ? _stopBatchDraw
                       : _openBatchPicker,
                   style: OutlinedButton.styleFrom(
-                    padding: EdgeInsets.symmetric(vertical: compact ? 8 : 11),
+                    padding: EdgeInsets.symmetric(vertical: compact ? 5 : 11),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                     foregroundColor: _batch.running
                         ? theme.colorScheme.error

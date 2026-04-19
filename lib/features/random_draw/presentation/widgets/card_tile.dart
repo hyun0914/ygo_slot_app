@@ -172,6 +172,14 @@ class _CardTileState extends State<CardTile> with TickerProviderStateMixin {
                                 ),
                               ),
                             ),
+                          // Tap overlay: ensures taps register even over HtmlElementView
+                          if (!widget.spinning)
+                            Positioned.fill(
+                              child: GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTap: widget.onTap,
+                              ),
+                            ),
                           Positioned.fill(
                             child: IgnorePointer(
                               child: AnimatedOpacity(

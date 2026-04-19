@@ -5,10 +5,10 @@ import '../../application/weekly_challenge_store.dart';
 import '../../domain/weekly_challenge.dart';
 
 class WeeklyChallengeWidget extends StatefulWidget {
-  /// Currently displayed drawn cards (null = no draw yet)
   final List<YgoCard>? cards;
+  final bool compact;
 
-  const WeeklyChallengeWidget({super.key, this.cards});
+  const WeeklyChallengeWidget({super.key, this.cards, this.compact = false});
 
   @override
   State<WeeklyChallengeWidget> createState() => _WeeklyChallengeWidgetState();
@@ -43,6 +43,58 @@ class _WeeklyChallengeWidgetState extends State<WeeklyChallengeWidget> {
     final matched = _challenge.countMatches(cards);
     final required = _challenge.requiredCount;
     final done = matched >= required && cards.isNotEmpty;
+
+    if (widget.compact) {
+      return AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        decoration: BoxDecoration(
+          color: done
+              ? Colors.green.withAlpha(30)
+              : theme.colorScheme.surfaceContainerHighest.withAlpha(80),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: done ? Colors.green.withAlpha(140) : theme.dividerColor.withAlpha(120),
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          child: Row(
+            children: [
+              Text(done ? '✅' : '🎯', style: const TextStyle(fontSize: 14)),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  _challenge.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
+                ),
+              ),
+              if (_completionsThisWeek > 0) ...[
+                const SizedBox(width: 4),
+                Text(
+                  '$_completionsThisWeek회',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: Colors.amber.shade700,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+              if (cards.isNotEmpty) ...[
+                const SizedBox(width: 6),
+                Text(
+                  '$matched/$required',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: done ? Colors.green : theme.colorScheme.primary,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      );
+    }
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
