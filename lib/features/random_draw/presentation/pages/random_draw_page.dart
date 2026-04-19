@@ -45,7 +45,6 @@ import '../../domain/daily_slot_rule.dart';
 import '../../domain/draw_history_entry.dart';
 import '../widgets/boss_countdown_widget.dart';
 import '../widgets/landing.dart';
-import '../widgets/streak_calendar_widget.dart';
 import 'history_page.dart';
 import 'probability_page.dart';
 import '../widgets/slot_header.dart';
@@ -226,6 +225,8 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
           _collectionSize = col.length;
           _currentXp = xp;
           _favoriteIds = favIds;
+          // 로컬에 기록이 있으면 랜딩 스킵 (새로고침 시)
+          if (_totalDraws > 0) _showLanding = false;
         });
       }
       // 로그인 직후 클라우드 데이터가 아직 반영 안 됐을 수 있으므로 sync 후 재로드
@@ -234,11 +235,13 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
       final syncedXp = await LevelStore.getTotalXp();
       final syncedCol = await CollectionStore.loadAll();
       final syncedFavIds = await FavoritesStore.loadIds();
+      final syncedDraws = await DrawStatsStore.getTotalDraws();
       if (mounted) {
         setState(() {
           _currentXp = syncedXp;
           _collectionSize = syncedCol.length;
           _favoriteIds = syncedFavIds;
+          _totalDraws = syncedDraws;
         });
       }
       // 알림: 오늘 아직 안 뽑았으면 브라우저 알림
@@ -1104,11 +1107,14 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
       useSafeArea: true,
       showDragHandle: true,
       isScrollControlled: true,
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.55,
+      ),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSheet) {
           final favNow = _favoriteIds.contains(card.id);
           return SafeArea(
-            child: Padding(
+            child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -1743,8 +1749,6 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
                   const SizedBox(height: 10),
                   BossCountdownWidget(count: _count),
                   const SizedBox(height: 14),
-                  const StreakCalendarWidget(),
-                  const SizedBox(height: 14),
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -1775,11 +1779,14 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
                 ],
               ),
             )
-          : Column(
+          : LayoutBuilder(
               key: const ValueKey('main'),
-      children: [
+              builder: (context, constraints) {
+              final compact = constraints.maxWidth < 480;
+              final hp = compact ? 12.0 : 16.0;
+              return Column(children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+          padding: EdgeInsets.fromLTRB(hp, compact ? 6 : 10, hp, 4),
           child: SlotHeader(
             rule: _todayRule,
             count: _count,
@@ -1788,19 +1795,19 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
         ),
         if (_jackpotStreak > 0)
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+            padding: EdgeInsets.fromLTRB(hp, 0, hp, 4),
             child: _buildStreakChip(theme),
           ),
         // 위클리 챌린지
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+          padding: EdgeInsets.fromLTRB(hp, 0, hp, 4),
           child: WeeklyChallengeWidget(
             cards: _hasGenerated && !_spinning ? _cards : null,
           ),
         ),
         // 보스데이 카운트다운 + 배틀 버튼 행
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+          padding: EdgeInsets.fromLTRB(hp, 0, hp, 4),
           child: Row(
             children: [
               BossCountdownWidget(count: _count),
@@ -1819,7 +1826,7 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
           ),
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+          padding: EdgeInsets.fromLTRB(hp, compact ? 4 : 8, hp, compact ? 4 : 8),
           child: Row(
             children: [
               Container(
@@ -1854,7 +1861,7 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
           ),
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+          padding: EdgeInsets.fromLTRB(hp, 0, hp, compact ? 6 : 10),
           child: SizedBox(
             width: double.infinity,
             child: ElevatedButton(
@@ -1865,7 +1872,7 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
                 await _runDraw(showPopup: true);
               },
               style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 18),
+                padding: EdgeInsets.symmetric(vertical: compact ? 12 : 18),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(18),
                 ),
@@ -1880,8 +1887,8 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
                   const SizedBox(width: 10),
                   Text(
                     _loading ? AppStrings.drawingButton : AppStrings.drawButton,
-                    style: const TextStyle(
-                      fontSize: 18,
+                    style: TextStyle(
+                      fontSize: compact ? 15 : 18,
                       fontWeight: FontWeight.w900,
                     ),
                   ),
@@ -1891,7 +1898,7 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
           ),
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          padding: EdgeInsets.fromLTRB(hp, 0, hp, compact ? 8 : 12),
           child: Row(
             children: [
               Expanded(
@@ -1902,7 +1909,7 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
                       ? _stopBatchDraw
                       : _openBatchPicker,
                   style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 11),
+                    padding: EdgeInsets.symmetric(vertical: compact ? 8 : 11),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                     foregroundColor: _batch.running
                         ? theme.colorScheme.error
@@ -1953,8 +1960,9 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
           ),
         const Divider(height: 1),
         Expanded(child: _buildBoard(theme)),
-      ],
-    ),
+      ]);
+              },
+            ),
     );
   }
 

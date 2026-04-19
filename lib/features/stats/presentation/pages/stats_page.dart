@@ -9,6 +9,7 @@ import '../../../../features/level/domain/level_config.dart';
 import '../../../../features/random_draw/application/draw_history_store.dart';
 import '../../../../features/random_draw/application/draw_stats_store.dart';
 import '../../../../features/random_draw/application/play_log_store.dart';
+import '../../../../features/random_draw/presentation/widgets/streak_calendar_widget.dart';
 import '../../../../features/weekly_challenge/application/weekly_challenge_store.dart';
 
 class StatsPage extends StatefulWidget {
@@ -140,6 +141,10 @@ class _StatsPageState extends State<StatsPage> {
                 _SectionTitle('📅 최근 30일 플레이'),
                 const SizedBox(height: 8),
                 _PlayDaysCard(playDays: _playDaysLast30, jackpotDays: _jackpotDaysLast30),
+                const SizedBox(height: 20),
+                _SectionTitle('🗓️ 뽑기 달력'),
+                const SizedBox(height: 8),
+                const StreakCalendarWidget(),
               ],
             ),
     );

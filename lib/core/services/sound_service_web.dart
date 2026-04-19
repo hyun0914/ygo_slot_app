@@ -23,7 +23,7 @@ extension type _Osc._(JSObject _) implements JSObject {
 }
 
 extension type _Gain._(JSObject _) implements JSObject {
-  external void connectTo(_ADest dest);
+  external void connect(_ADest dest);
   external _AP get gain;
 }
 
@@ -41,12 +41,14 @@ class SoundService {
   static bool get muted => _muted;
   static void toggleMute() => _muted = !_muted;
 
-  static _AC? _getCtx() {
+  static Future<_AC?> _getCtx() async {
     try {
       if (_ctx == null || _ctx!.state == 'closed') {
         _ctx = _AC();
       }
-      if (_ctx!.state == 'suspended') _ctx!.resume();
+      if (_ctx!.state == 'suspended') {
+        await _ctx!.resume().toDart;
+      }
       return _ctx;
     } catch (e) {
       debugPrint('[Sound] AudioContext init failed: $e');
@@ -54,24 +56,24 @@ class SoundService {
     }
   }
 
-  static void _tone({
+  static Future<void> _tone({
     required double freq,
     required double dur,
     double vol = 0.25,
     String type = 'sine',
     double delay = 0.0,
     double fadeStart = 0.0,
-  }) {
+  }) async {
     if (_muted) return;
     try {
-      final ctx = _getCtx();
+      final ctx = await _getCtx();
       if (ctx == null) return;
       final now = ctx.currentTime + delay;
 
       final osc = ctx.createOscillator();
       final gn = ctx.createGain();
       osc.connect(gn);
-      gn.connectTo(ctx.destination);
+      gn.connect(ctx.destination);
 
       osc.type = type;
       osc.frequency.setValueAtTime(freq, now);
@@ -104,7 +106,6 @@ class SoundService {
   }
 
   static void playJackpot() {
-    // C Major arpeggio
     const notes = [523.0, 659.0, 784.0, 1047.0];
     for (int i = 0; i < notes.length; i++) {
       _tone(freq: notes[i], dur: 0.22, vol: 0.3, type: 'sine', delay: i * 0.13);
@@ -112,7 +113,6 @@ class SoundService {
   }
 
   static void playBossJackpot() {
-    // Dramatic fanfare
     const notes = [392.0, 523.0, 659.0, 784.0, 1047.0, 1047.0];
     const delays = [0.0, 0.12, 0.24, 0.36, 0.48, 0.66];
     const vols = [0.3, 0.32, 0.34, 0.36, 0.45, 0.5];
