@@ -213,14 +213,14 @@ class _CollectionGrid extends StatelessWidget {
     }
 
     return LayoutBuilder(builder: (context, constraints) {
-      final cols = (constraints.maxWidth / 110).floor().clamp(3, 8);
+      final cols = (constraints.maxWidth / 110).floor().clamp(2, 8);
       return GridView.builder(
         padding: const EdgeInsets.all(10),
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: cols,
-          childAspectRatio: 59 / 100,
-          crossAxisSpacing: 6,
-          mainAxisSpacing: 6,
+          childAspectRatio: 59 / 102,
+          crossAxisSpacing: 8,
+          mainAxisSpacing: 8,
         ),
         itemCount: entries.length,
         itemBuilder: (context, i) => _CollectionCard(entry: entries[i]),
@@ -242,14 +242,19 @@ class _CollectionCard extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Expanded(
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(6),
+          child: Card(
+            margin: EdgeInsets.zero,
+            elevation: 2,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+            clipBehavior: Clip.antiAlias,
             child: Stack(
               fit: StackFit.expand,
               children: [
                 AppNetworkImage(
                   entry.imageUrl,
-                  fit: BoxFit.cover,
+                  fit: BoxFit.contain,
                 ),
                 if (entry.count > 1)
                   Positioned(
@@ -275,7 +280,7 @@ class _CollectionCard extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(height: 2),
+        const SizedBox(height: 3),
         Text(
           entry.name,
           maxLines: 1,

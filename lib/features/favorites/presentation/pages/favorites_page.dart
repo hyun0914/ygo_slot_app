@@ -70,12 +70,12 @@ class _FavoritesPageState extends State<FavoritesPage> {
           : _favorites.isEmpty
               ? _EmptyState()
               : LayoutBuilder(builder: (context, constraints) {
-                  final cols = (constraints.maxWidth / 110).floor().clamp(3, 8);
+                  final cols = (constraints.maxWidth / 110).floor().clamp(2, 8);
                   return GridView.builder(
                     padding: const EdgeInsets.all(12),
                     gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: cols,
-                      childAspectRatio: 59 / 100,
+                      childAspectRatio: 59 / 102,
                       crossAxisSpacing: 8,
                       mainAxisSpacing: 8,
                     ),

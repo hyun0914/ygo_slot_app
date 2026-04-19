@@ -367,7 +367,10 @@ class _DistBar extends StatelessWidget {
       children: [
         SizedBox(
           width: 72,
-          child: Text(label, style: theme.textTheme.bodySmall),
+          child: Text(label,
+              style: theme.textTheme.bodySmall,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis),
         ),
         Expanded(
           child: ClipRRect(
@@ -461,6 +464,8 @@ class _PlayStat extends StatelessWidget {
         children: [
           Text(
             value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: theme.textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.bold,
               color: color,
@@ -469,6 +474,8 @@ class _PlayStat extends StatelessWidget {
           Text(
             label,
             textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
             style: theme.textTheme.labelSmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
               fontSize: 10,

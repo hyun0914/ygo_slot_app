@@ -22,13 +22,14 @@ class Landing extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 520),
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+    return SingleChildScrollView(
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
             children: [
               Icon(Icons.casino, size: 56, color: theme.colorScheme.primary),
               const SizedBox(height: 14),
@@ -89,6 +90,7 @@ class Landing extends StatelessWidget {
           ),
         ),
       ),
+    ),
     );
   }
 }

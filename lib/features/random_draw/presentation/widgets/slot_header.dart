@@ -93,102 +93,113 @@ class SlotHeader extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: theme.dividerColor),
       ),
-      child: Row(
-        children: [
-          // DAILY xN
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.primary,
-              borderRadius: BorderRadius.circular(999),
-              boxShadow: [
-                BoxShadow(
-                  blurRadius: 12,
-                  spreadRadius: 0,
-                  color: theme.colorScheme.primary.withAlpha(45),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final narrow = constraints.maxWidth < 380;
+          final badges = Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // DAILY xN
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary,
+                  borderRadius: BorderRadius.circular(999),
+                  boxShadow: [
+                    BoxShadow(
+                      blurRadius: 12,
+                      spreadRadius: 0,
+                      color: theme.colorScheme.primary.withAlpha(45),
+                    ),
+                  ],
                 ),
+                child: Text(
+                  'DAILY x$count',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onPrimary,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.6,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              // 오늘 kind 칩
+              Semantics(
+                label: '오늘의 모드: ${dayKindLabel(rule!.kind)}',
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: dayKindChipBg(theme, rule!.kind),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: dayKindChipBorder(theme, rule!.kind)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(dayKindIcon(rule!.kind), size: 14,
+                          color: dayKindChipFg(theme, rule!.kind)),
+                      const SizedBox(width: 6),
+                      Text(
+                        dayKindLabel(rule!.kind),
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: dayKindChipFg(theme, rule!.kind),
+                          fontWeight: FontWeight.w900,
+                          height: 1.0,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          );
+
+          final slots = Row(
+            children: List.generate(3, (i) {
+              final SlotTarget t = rule!.targets[i];
+              final isExact =
+                  t.cardId != null && (t.imageUrl ?? '').trim().isNotEmpty;
+              final title = isExact
+                  ? (t.cardName ?? '카드 #${t.cardId}')
+                  : prettyCategory(t.category ?? '');
+              final bgUrl = isExact ? t.imageUrl : null;
+              return Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(left: i == 0 ? 0 : 8),
+                  child: SlotCardCell(
+                    title: title,
+                    imageUrl: bgUrl,
+                    isExact: isExact,
+                    difficulty: isExact
+                        ? SlotDifficulty.hard
+                        : difficultyForCategoryKey(t.category ?? ''),
+                    onTapPreview: isExact ? () => onTapExactTarget?.call(t) : null,
+                    heroTag: isExact ? 'slot_card_${t.cardId}' : null,
+                  ),
+                ),
+              );
+            }),
+          );
+
+          if (narrow) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                badges,
+                const SizedBox(height: 8),
+                slots,
               ],
-            ),
-            child: Text(
-              'DAILY x$count',
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: theme.colorScheme.onPrimary,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 0.6,
-              ),
-            ),
-          ),
+            );
+          }
 
-          // 오늘 kind 칩
-          const SizedBox(width: 8),
-          Semantics(
-            label: '오늘의 모드: ${dayKindLabel(rule!.kind)}',
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: dayKindChipBg(theme, rule!.kind),
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: dayKindChipBorder(theme, rule!.kind)),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    dayKindIcon(rule!.kind),
-                    size: 14,
-                    color: dayKindChipFg(theme, rule!.kind),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    dayKindLabel(rule!.kind),
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: dayKindChipFg(theme, rule!.kind),
-                      fontWeight: FontWeight.w900,
-                      height: 1.0,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          const SizedBox(width: 10),
-
-          // 3칸 슬롯
-          Expanded(
-            child: Row(
-              children: List.generate(3, (i) {
-                final SlotTarget t = rule!.targets[i];
-
-                final isExact =
-                    t.cardId != null && (t.imageUrl ?? '').trim().isNotEmpty;
-
-                final title = isExact
-                    ? (t.cardName ?? '카드 #${t.cardId}')
-                    : prettyCategory(t.category ?? '');
-
-                final bgUrl = isExact ? t.imageUrl : null;
-
-                return Expanded(
-                  child: Padding(
-                    padding: EdgeInsets.only(left: i == 0 ? 0 : 8),
-                    child: SlotCardCell(
-                      title: title,
-                      imageUrl: bgUrl,
-                      isExact: isExact,
-                      difficulty: isExact
-                          ? SlotDifficulty.hard
-                          : difficultyForCategoryKey(t.category ?? ''),
-                      onTapPreview:
-                          isExact ? () => onTapExactTarget?.call(t) : null,
-                      heroTag: isExact ? 'slot_card_${t.cardId}' : null,
-                    ),
-                  ),
-                );
-              }),
-            ),
-          ),
-        ],
+          return Row(
+            children: [
+              badges,
+              const SizedBox(width: 10),
+              Expanded(child: slots),
+            ],
+          );
+        },
       ),
     );
   }

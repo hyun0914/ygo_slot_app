@@ -228,6 +228,19 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
           _favoriteIds = favIds;
         });
       }
+      // 로그인 직후 클라우드 데이터가 아직 반영 안 됐을 수 있으므로 sync 후 재로드
+      await CloudSyncService.downloadAndMerge();
+      if (!mounted) return;
+      final syncedXp = await LevelStore.getTotalXp();
+      final syncedCol = await CollectionStore.loadAll();
+      final syncedFavIds = await FavoritesStore.loadIds();
+      if (mounted) {
+        setState(() {
+          _currentXp = syncedXp;
+          _collectionSize = syncedCol.length;
+          _favoriteIds = syncedFavIds;
+        });
+      }
       // 알림: 오늘 아직 안 뽑았으면 브라우저 알림
       if (NotificationService.isSupported) {
         final playLog = await PlayLogStore.load();

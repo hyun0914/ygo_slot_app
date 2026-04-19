@@ -188,6 +188,10 @@ class _SelectPhase extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final monsters = cards
+        .where((c) => c.type.toLowerCase().contains('monster'))
+        .toList();
+
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -199,30 +203,57 @@ class _SelectPhase extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'ATK(공격력)이 높을수록 유리합니다. ATK가 없는 카드는 0으로 처리됩니다.',
+            'ATK(공격력)이 높을수록 유리합니다. 몬스터 카드만 출전 가능합니다.',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
           const SizedBox(height: 16),
-          Expanded(
-            child: LayoutBuilder(builder: (context, constraints) {
-              final cols = (constraints.maxWidth / 130).floor().clamp(2, 6);
-              return GridView.builder(
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: cols,
-                  childAspectRatio: 59 / 110,
-                  crossAxisSpacing: 10,
-                  mainAxisSpacing: 10,
+          if (monsters.isEmpty)
+            Expanded(
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('😞', style: TextStyle(fontSize: 48)),
+                    const SizedBox(height: 12),
+                    Text(
+                      '몬스터 카드가 없습니다',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '몬스터 카드가 포함된 뽑기 결과로 다시 시도해보세요.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
                 ),
-                itemCount: cards.length,
-                itemBuilder: (_, i) => _SelectableCard(
-                  card: cards[i],
-                  onTap: () => onSelect(cards[i]),
-                ),
-              );
-            }),
-          ),
+              ),
+            )
+          else
+            Expanded(
+              child: LayoutBuilder(builder: (context, constraints) {
+                final cols = (constraints.maxWidth / 130).floor().clamp(2, 6);
+                return GridView.builder(
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: cols,
+                    childAspectRatio: 59 / 106,
+                    crossAxisSpacing: 10,
+                    mainAxisSpacing: 10,
+                  ),
+                  itemCount: monsters.length,
+                  itemBuilder: (_, i) => _SelectableCard(
+                    card: monsters[i],
+                    onTap: () => onSelect(monsters[i]),
+                  ),
+                );
+              }),
+            ),
         ],
       ),
     );
@@ -244,11 +275,16 @@ class _SelectableCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
+            child: Card(
+              margin: EdgeInsets.zero,
+              elevation: 3,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              clipBehavior: Clip.antiAlias,
               child: AppNetworkImage(
                 card.imageUrl,
-                fit: BoxFit.cover,
+                fit: BoxFit.contain,
                 fallback: (_) => const YgoCardBack(label: 'YGO'),
               ),
             ),
@@ -476,27 +512,31 @@ class _CardDisplay extends StatelessWidget {
               color: theme.colorScheme.onSurfaceVariant,
             )),
         const SizedBox(height: 6),
-        SizedBox(
-          width: 100,
-          height: 145,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: revealed
-                ? AppNetworkImage(card.imageUrl, fit: BoxFit.cover,
-                    fallback: (_) => const YgoCardBack(label: 'YGO'))
-                : const YgoCardBack(label: 'YGO'),
+        ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 72, maxWidth: 120),
+          child: AspectRatio(
+            aspectRatio: 59 / 86,
+            child: Card(
+              margin: EdgeInsets.zero,
+              elevation: 4,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: revealed
+                  ? AppNetworkImage(card.imageUrl, fit: BoxFit.contain,
+                      fallback: (_) => const YgoCardBack(label: 'YGO'))
+                  : const YgoCardBack(label: 'YGO'),
+            ),
           ),
         ),
         const SizedBox(height: 4),
-        SizedBox(
-          width: 100,
-          child: Text(
-            revealed ? card.name : '???',
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style: theme.textTheme.labelSmall?.copyWith(fontSize: 9),
-          ),
+        Text(
+          revealed ? card.name : '???',
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: theme.textTheme.labelSmall?.copyWith(fontSize: 9),
         ),
         if (revealed)
           Text(
