@@ -41,6 +41,7 @@ class AppNetworkImage extends StatelessWidget {
           ..style.width = '100%'
           ..style.height = '100%'
           ..style.objectFit = _objectFitCss(fit)
+          ..style.pointerEvents = 'none'
           ..loading = 'lazy'
           ..decoding = 'async';
 

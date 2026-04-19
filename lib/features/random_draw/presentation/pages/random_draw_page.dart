@@ -917,7 +917,7 @@ class _RandomDrawPageState extends ConsumerState<RandomDrawPage> with TickerProv
       showDragHandle: true,
       isScrollControlled: true,
       constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.55,
+        maxHeight: MediaQuery.of(context).size.height * 0.70,
       ),
       builder: (_) => CardDetailSheet(
         card: card,
