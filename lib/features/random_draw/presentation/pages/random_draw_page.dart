@@ -6,8 +6,10 @@ import 'package:confetti/confetti.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/api_client.dart';
+import '../../../../core/providers/game_providers.dart';
 import '../../../../core/app_constants.dart';
 import '../../../../core/app_strings.dart';
 import '../../../../core/models/ygopro_card.dart';
@@ -17,15 +19,12 @@ import '../../../../core/services/notification_service.dart';
 import '../../../../core/services/share_service.dart';
 import '../../../../core/services/sound_service.dart';
 import '../../../achievements/application/achievement_store.dart';
-import '../../../favorites/application/favorites_store.dart';
 import '../../../favorites/presentation/pages/favorites_page.dart';
 import '../../../stats/presentation/pages/stats_page.dart';
 import '../../../achievements/domain/achievement.dart';
 import '../../../achievements/presentation/pages/achievements_page.dart';
 import '../../../battle/presentation/pages/battle_page.dart';
-import '../../../collection/application/collection_store.dart';
 import '../../../collection/presentation/pages/collection_page.dart';
-import '../../../level/application/level_store.dart';
 import '../../../level/domain/level_config.dart';
 import '../../../level/presentation/widgets/level_badge.dart';
 import '../../../level/presentation/widgets/level_up_overlay.dart';
@@ -33,7 +32,6 @@ import '../../../weekly_challenge/application/weekly_challenge_store.dart';
 import '../../../weekly_challenge/domain/weekly_challenge.dart';
 import '../../../weekly_challenge/presentation/widgets/weekly_challenge_widget.dart';
 import '../../application/draw_history_store.dart';
-import '../../application/draw_stats_store.dart';
 import '../../application/jackpot_streak_store.dart';
 import '../../application/play_log_store.dart';
 import '../../application/random_draw_controller.dart';
@@ -78,14 +76,14 @@ class _BatchState {
 // -----------------------------
 // Page
 // -----------------------------
-class RandomDrawPage extends StatefulWidget {
+class RandomDrawPage extends ConsumerStatefulWidget {
   const RandomDrawPage({super.key});
 
   @override
-  State<RandomDrawPage> createState() => _RandomDrawPageState();
+  ConsumerState<RandomDrawPage> createState() => _RandomDrawPageState();
 }
 
-class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStateMixin {
+class _RandomDrawPageState extends ConsumerState<RandomDrawPage> with TickerProviderStateMixin {
   late final RandomDrawController _controller;
 
   // Confetti
@@ -98,21 +96,11 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
   late final AnimationController _bossTextController;
   bool _isBossJackpot = false;
 
-  // 잭팟 스트릭
-  JackpotStreakData _streak = JackpotStreakData.empty;
-
-  // 통계 / 컬렉션
-  int _totalDraws = 0;
-  int _collectionSize = 0;
-
   // 도전과제 토스트 큐
   final List<Achievement> _achievementQueue = [];
   bool _showingAchievement = false;
   // 배치 중 누적된 도전과제 (배치 완료 후 표시)
   final List<Achievement> _pendingBatchAchievements = [];
-
-  // 레벨 / XP
-  int _currentXp = 0;
 
   // 레벨업 오버레이 큐
   final List<int> _levelUpQueue = [];
@@ -120,9 +108,6 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
 
   // 위클리 챌린지
   late WeeklyChallengeDef _weeklyChallenge;
-
-  // 즐겨찾기
-  Set<int> _favoriteIds = {};
 
   // 결과
   List<YgoCard> _cards = [];
@@ -201,46 +186,27 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final todayKey = _todayKey(DateTime.now());
-      final yesterdayKey = _todayKey(DateTime.now().subtract(const Duration(days: 1)));
 
       _todayRule = await TodayRulePrefs.load(count: _count, todayKey: todayKey);
       if (!mounted) return;
       if (_todayRule == null) {
         await _ensureTodayRuleFromDailyPool();
       }
-      final streak = await JackpotStreakStore.load(
-        todayKey: todayKey,
-        yesterdayKey: yesterdayKey,
-      );
-      _totalDraws = await DrawStatsStore.getTotalDraws();
-      final col = await CollectionStore.loadAll();
-      final xp = await LevelStore.getTotalXp();
-      final favIds = await FavoritesStore.loadIds();
-      if (mounted) {
-        setState(() {
-          _streak = streak;
-          _collectionSize = col.length;
-          _currentXp = xp;
-          _favoriteIds = favIds;
-          // 로컬에 기록이 있으면 랜딩 스킵 (새로고침 시)
-          if (_totalDraws > 0) _showLanding = false;
-        });
-      }
+      // 로컬에 기록이 있으면 랜딩 스킵 (새로고침 시)
+      ref.read(totalDrawsProvider.future).then((draws) {
+        if (mounted && draws > 0) setState(() => _showLanding = false);
+      });
       // 로그인 직후 클라우드 데이터가 아직 반영 안 됐을 수 있으므로 sync 후 재로드
       await CloudSyncService.downloadAndMerge();
       if (!mounted) return;
-      final syncedXp = await LevelStore.getTotalXp();
-      final syncedCol = await CollectionStore.loadAll();
-      final syncedFavIds = await FavoritesStore.loadIds();
-      final syncedDraws = await DrawStatsStore.getTotalDraws();
-      if (mounted) {
-        setState(() {
-          _currentXp = syncedXp;
-          _collectionSize = syncedCol.length;
-          _favoriteIds = syncedFavIds;
-          _totalDraws = syncedDraws;
-        });
-      }
+      ref.invalidate(xpProvider);
+      ref.invalidate(collectionProvider);
+      ref.invalidate(favoriteIdsProvider);
+      ref.invalidate(totalDrawsProvider);
+      ref.invalidate(streakProvider);
+      ref.read(totalDrawsProvider.future).then((draws) {
+        if (mounted && draws > 0) setState(() => _showLanding = false);
+      });
       // 알림: 오늘 아직 안 뽑았으면 브라우저 알림
       if (NotificationService.isSupported) {
         final playLog = await PlayLogStore.load();
@@ -617,12 +583,13 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
 
     CloudSyncService.uploadAfterDraw();
     if (mounted) {
+      final streakData = ref.read(streakProvider).valueOrNull ?? JackpotStreakData.empty;
       BatchSummaryDialog.show(
         context,
         total: _batch.total,
         hist: Map.from(_batch.hist),
-        streak: _streak.streak,
-        best: _streak.best,
+        streak: streakData.streak,
+        best: streakData.best,
       );
     }
   }
@@ -756,16 +723,18 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
     if (_cards.isEmpty) return;
 
     // 컬렉션 업데이트
-    final newSize = await CollectionStore.addCards(
-      _cards.map((c) => (id: c.id, name: c.name, imageUrl: c.imageUrl)).toList(),
-    );
+    final newSize = await ref
+        .read(collectionProvider.notifier)
+        .addCards(_cards.map((c) => (id: c.id, name: c.name, imageUrl: c.imageUrl)).toList());
 
     // 총 뽑기 횟수
-    final newDraws = await DrawStatsStore.increment();
+    final newDraws = await ref.read(totalDrawsProvider.notifier).increment();
 
     // 플레이 로그 (잭팟 여부)
     final isJackpot = hits >= 3;
     await PlayLogStore.recordPlay(jackpot: isJackpot);
+
+    final streakData = ref.read(streakProvider).valueOrNull ?? JackpotStreakData.empty;
 
     // 도전과제 체크
     final event = AchievementEvent(
@@ -775,8 +744,8 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
       bossJackpot: isJackpot && _todayRule?.kind == DayKind.boss,
       mode: _count,
       isBatch: isBatch,
-      currentStreak: _streak.streak,
-      totalJackpots: _streak.total,
+      currentStreak: streakData.streak,
+      totalJackpots: streakData.total,
       totalDraws: newDraws,
       collectionSize: newSize,
     );
@@ -788,7 +757,7 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
       bossJackpot: isJackpot && _todayRule?.kind == DayKind.boss,
       isBatch: isBatch,
     );
-    final lvResult = await LevelStore.addXp(xpGain);
+    final lvResult = await ref.read(xpProvider.notifier).addXp(xpGain);
 
     // 위클리 챌린지 완료 체크
     if (_weeklyChallenge.isCompleted(_cards)) {
@@ -796,12 +765,7 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
     }
 
     if (!mounted) return;
-    setState(() {
-      _totalDraws = newDraws;
-      _collectionSize = newSize;
-      _currentXp = lvResult.xp;
-    });
-    debugPrint('[Stats] 총 뽑기: $_totalDraws회, 도감: $_collectionSize종, Lv.${lvResult.level}');
+    debugPrint('[Stats] 총 뽑기: $newDraws회, 도감: $newSize종, Lv.${lvResult.level}');
 
     // 레벨업 알림
     if (lvResult.level > lvResult.oldLevel) {
@@ -863,15 +827,8 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
   }
 
   Future<void> _toggleFavorite(int cardId) async {
-    final isNow = await FavoritesStore.toggle(cardId);
+    final isNow = await ref.read(favoriteIdsProvider.notifier).toggle(cardId);
     if (!mounted) return;
-    setState(() {
-      if (isNow) {
-        _favoriteIds.add(cardId);
-      } else {
-        _favoriteIds.remove(cardId);
-      }
-    });
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -897,7 +854,7 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
         '유희왕 슬롯 결과\n'
         '$dayType | $hitEmoji\n'
         '뽑은 카드: $cardNames${_cards.length > 3 ? ' 외 ${_cards.length - 3}장' : ''}\n'
-        '🔥 연속 잭팟: ${_streak.streak}일';
+        '🔥 연속 잭팟: ${ref.read(streakProvider).valueOrNull?.streak ?? 0}일';
     _showShareDialog(text);
   }
 
@@ -964,7 +921,7 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
       ),
       builder: (_) => CardDetailSheet(
         card: card,
-        isFavorite: _favoriteIds.contains(card.id),
+        isFavorite: ref.read(favoriteIdsProvider).valueOrNull?.contains(card.id) ?? false,
         onToggleFavorite: () => _toggleFavorite(card.id),
         onShare: () => _shareResult(countSlotHits(cards: _cards, rule: _todayRule)),
       ),
@@ -1008,14 +965,7 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
   // Jackpot streak (delegated to JackpotStreakStore)
   // -----------------------------
   Future<void> _doUpdateStreak() async {
-    final todayKey = _todayKey(DateTime.now());
-    final yesterdayKey = _todayKey(DateTime.now().subtract(const Duration(days: 1)));
-    final updated = await JackpotStreakStore.update(
-      todayKey: todayKey,
-      yesterdayKey: yesterdayKey,
-      current: _streak,
-    );
-    if (mounted) setState(() => _streak = updated);
+    await ref.read(streakProvider.notifier).updateStreak();
   }
 
   void _openExactTargetPreview(SlotTarget t) {
@@ -1038,7 +988,7 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
               // 레벨 배지
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 10),
-                child: LevelBadge(xp: _currentXp, compact: true),
+                child: LevelBadge(xp: ref.watch(xpProvider).valueOrNull ?? 0, compact: true),
               ),
               const SizedBox(width: 4),
               // 뮤트 토글
@@ -1247,6 +1197,7 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
   }
 
   Widget _buildHome(ThemeData theme) {
+    final streak = ref.watch(streakProvider).valueOrNull ?? JackpotStreakData.empty;
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 280),
       switchInCurve: Curves.easeOut,
@@ -1270,9 +1221,9 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
               },
               footer: Column(
                 children: [
-                  if (_streak.streak > 0) ...[
+                  if (streak.streak > 0) ...[
                     const SizedBox(height: 14),
-                    _buildStreakChip(theme),
+                    _buildStreakChip(theme, streak),
                   ],
                   const SizedBox(height: 10),
                   BossCountdownWidget(count: _count),
@@ -1321,10 +1272,10 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
             onTapExactTarget: _openExactTargetPreview,
           ),
         ),
-        if (_streak.streak > 0)
+        if (streak.streak > 0)
           Padding(
             padding: EdgeInsets.fromLTRB(hp, 0, hp, 4),
-            child: _buildStreakChip(theme),
+            child: _buildStreakChip(theme, streak),
           ),
         // 위클리 챌린지
         Padding(
@@ -1514,11 +1465,11 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
     );
   }
 
-  Widget _buildStreakChip(ThemeData theme) {
-    final streak = _streak.streak;
+  Widget _buildStreakChip(ThemeData theme, JackpotStreakData streakData) {
+    final streak = streakData.streak;
     if (streak <= 0) return const SizedBox.shrink();
 
-    final isDone = _streak.todayDone;
+    final isDone = streakData.todayDone;
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 300),
       child: Container(
@@ -1549,10 +1500,10 @@ class _RandomDrawPageState extends State<RandomDrawPage> with TickerProviderStat
                     : theme.colorScheme.onSurfaceVariant,
               ),
             ),
-            if (_streak.best > 1) ...[
+            if (streakData.best > 1) ...[
               const SizedBox(width: 8),
               Text(
-                '최고 ${_streak.best}일',
+                '최고 ${streakData.best}일',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),

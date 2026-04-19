@@ -1,27 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/providers/game_providers.dart';
 import '../../../../core/widgets/app_network_image.dart';
-import '../../application/collection_store.dart';
 import '../../domain/collection_entry.dart';
 
-class CollectionPage extends StatefulWidget {
+class CollectionPage extends ConsumerStatefulWidget {
   const CollectionPage({super.key});
 
   @override
-  State<CollectionPage> createState() => _CollectionPageState();
+  ConsumerState<CollectionPage> createState() => _CollectionPageState();
 }
 
-class _CollectionPageState extends State<CollectionPage> {
-  Map<int, CollectionEntry> _collection = {};
-  bool _loading = true;
+class _CollectionPageState extends ConsumerState<CollectionPage> {
   String _search = '';
   final _searchCtrl = TextEditingController();
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
 
   @override
   void dispose() {
@@ -29,17 +22,8 @@ class _CollectionPageState extends State<CollectionPage> {
     super.dispose();
   }
 
-  Future<void> _load() async {
-    final data = await CollectionStore.loadAll();
-    if (!mounted) return;
-    setState(() {
-      _collection = data;
-      _loading = false;
-    });
-  }
-
-  List<CollectionEntry> get _filtered {
-    final all = _collection.values.toList()
+  List<CollectionEntry> _filtered(Map<int, CollectionEntry> collection) {
+    final all = collection.values.toList()
       ..sort((a, b) => b.count.compareTo(a.count));
     if (_search.isEmpty) return all;
     final q = _search.toLowerCase();
@@ -49,7 +33,7 @@ class _CollectionPageState extends State<CollectionPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final total = _collection.length;
+    final collectionAsync = ref.watch(collectionProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -59,7 +43,7 @@ class _CollectionPageState extends State<CollectionPage> {
             padding: const EdgeInsets.only(right: 16),
             child: Center(
               child: Text(
-                '$total종',
+                '${ref.watch(collectionSizeProvider)}종',
                 style: theme.textTheme.labelLarge?.copyWith(
                   color: theme.colorScheme.primary,
                   fontWeight: FontWeight.bold,
@@ -69,35 +53,38 @@ class _CollectionPageState extends State<CollectionPage> {
           ),
         ],
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : total == 0
-              ? _EmptyState()
-              : Column(
-                  children: [
-                    _CollectionSummary(collection: _collection),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-                      child: TextField(
-                        controller: _searchCtrl,
-                        decoration: InputDecoration(
-                          hintText: '카드 이름 검색',
-                          prefixIcon: const Icon(Icons.search, size: 20),
-                          isDense: true,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 10),
-                        ),
-                        onChanged: (v) => setState(() => _search = v),
-                      ),
+      body: collectionAsync.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, st) => const Center(child: Text('로드 실패')),
+        data: (collection) {
+          if (collection.isEmpty) return _EmptyState();
+          return Column(
+            children: [
+              _CollectionSummary(collection: collection),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+                child: TextField(
+                  controller: _searchCtrl,
+                  decoration: InputDecoration(
+                    hintText: '카드 이름 검색',
+                    prefixIcon: const Icon(Icons.search, size: 20),
+                    isDense: true,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                    Expanded(
-                      child: _CollectionGrid(entries: _filtered),
-                    ),
-                  ],
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
+                  ),
+                  onChanged: (v) => setState(() => _search = v),
                 ),
+              ),
+              Expanded(
+                child: _CollectionGrid(entries: _filtered(collection)),
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 }
@@ -301,7 +288,7 @@ class _EmptyState extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text('📚', style: const TextStyle(fontSize: 64)),
+          const Text('📚', style: TextStyle(fontSize: 64)),
           const SizedBox(height: 16),
           Text(
             '아직 수집한 카드가 없습니다',

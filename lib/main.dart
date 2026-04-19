@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'features/auth/presentation/pages/auth_page.dart';
 import 'features/random_draw/presentation/pages/random_draw_page.dart';
@@ -23,7 +24,7 @@ void main() async {
   } catch (e, st) {
     debugPrint('[Firebase Init Error] $e\n$st');
   }
-  runApp(const MyApp());
+  runApp(const ProviderScope(child: MyApp()));
 }
 
 class MyApp extends StatelessWidget {
