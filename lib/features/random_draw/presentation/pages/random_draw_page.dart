@@ -978,16 +978,18 @@ class _RandomDrawPageState extends ConsumerState<RandomDrawPage> with TickerProv
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final mobileCompact = MediaQuery.sizeOf(context).width < 480;
 
     return Stack(
       children: [
         Scaffold(
           appBar: AppBar(
+            toolbarHeight: mobileCompact ? 44 : kToolbarHeight,
             title: const Text('유희왕 슬롯'),
             actions: [
               // 레벨 배지
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 10),
+                padding: EdgeInsets.symmetric(vertical: mobileCompact ? 6 : 10),
                 child: LevelBadge(xp: ref.watch(xpProvider).valueOrNull ?? 0, compact: true),
               ),
               const SizedBox(width: 4),
@@ -1265,7 +1267,7 @@ class _RandomDrawPageState extends ConsumerState<RandomDrawPage> with TickerProv
               final hp = compact ? 12.0 : 16.0;
               return Column(children: [
         Padding(
-          padding: EdgeInsets.fromLTRB(hp, compact ? 4 : 10, hp, 4),
+          padding: EdgeInsets.fromLTRB(hp, compact ? 4 : 10, hp, compact ? 4 : 4),
           child: SlotHeader(
             rule: _todayRule,
             count: _count,
@@ -1273,69 +1275,22 @@ class _RandomDrawPageState extends ConsumerState<RandomDrawPage> with TickerProv
             onTapExactTarget: _openExactTargetPreview,
           ),
         ),
-        if (streak.streak > 0)
+        // 스트릭 칩: wide만
+        if (!compact && streak.streak > 0)
           Padding(
             padding: EdgeInsets.fromLTRB(hp, 0, hp, 4),
             child: _buildStreakChip(theme, streak),
           ),
-        // 위클리 챌린지
+        // 위클리 챌린지: 항상 표시 (compact는 한 줄 요약)
         Padding(
-          padding: EdgeInsets.fromLTRB(hp, 0, hp, compact ? 3 : 4),
+          padding: EdgeInsets.fromLTRB(hp, 0, hp, compact ? 2 : 4),
           child: WeeklyChallengeWidget(
             cards: _hasGenerated && !_spinning ? _cards : null,
             compact: compact,
           ),
         ),
-        // compact: BossCountdown + 모드칩(탭가능) + 배틀 한 행
-        // wide: 보스데이 행 + 모드 행 분리
         if (compact)
-          Padding(
-            padding: EdgeInsets.fromLTRB(hp, 0, hp, 3),
-            child: Row(
-              children: [
-                BossCountdownWidget(count: _count),
-                const SizedBox(width: 6),
-                GestureDetector(
-                  onTap: _loading || _batch.running ? null : _openCountSheet,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(color: theme.dividerColor),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.tune, size: 13, color: theme.colorScheme.onSurfaceVariant),
-                        const SizedBox(width: 4),
-                        Text(
-                          _currentFilterSummary(),
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w900,
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const Spacer(),
-                if (_hasGenerated && !_spinning && _cards.isNotEmpty)
-                  TextButton.icon(
-                    onPressed: _openBattle,
-                    icon: const Icon(Icons.sports_martial_arts, size: 14),
-                    label: const Text('배틀'),
-                    style: TextButton.styleFrom(
-                      visualDensity: VisualDensity.compact,
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      textStyle: const TextStyle(fontSize: 12),
-                    ),
-                  ),
-              ],
-            ),
-          )
+          const SizedBox(height: 0)
         else ...[
           Padding(
             padding: EdgeInsets.fromLTRB(hp, 0, hp, 4),
@@ -1407,26 +1362,27 @@ class _RandomDrawPageState extends ConsumerState<RandomDrawPage> with TickerProv
                       await _runDraw(showPopup: true);
                     },
                     style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      padding: const EdgeInsets.symmetric(vertical: 3),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         RotationTransition(
                           turns: _spinning ? _spinController : const AlwaysStoppedAnimation(0),
-                          child: const Icon(Icons.casino, size: 18),
+                          child: const Icon(Icons.casino, size: 14),
                         ),
-                        const SizedBox(width: 6),
+                        const SizedBox(width: 4),
                         Text(
                           _loading ? AppStrings.drawingButton : AppStrings.drawButton,
-                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900),
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900),
                         ),
                       ],
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 6),
                 OutlinedButton(
                   onPressed: _loading
                       ? null
@@ -1434,8 +1390,9 @@ class _RandomDrawPageState extends ConsumerState<RandomDrawPage> with TickerProv
                       ? _stopBatchDraw
                       : _openBatchPicker,
                   style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    padding: const EdgeInsets.symmetric(vertical: 3, horizontal: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     foregroundColor: _batch.running
                         ? theme.colorScheme.error
                         : theme.colorScheme.onSurfaceVariant,
@@ -1447,13 +1404,13 @@ class _RandomDrawPageState extends ConsumerState<RandomDrawPage> with TickerProv
                       ? Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.stop_circle_outlined, size: 16),
-                            const SizedBox(width: 4),
+                            const Icon(Icons.stop_circle_outlined, size: 13),
+                            const SizedBox(width: 3),
                             Text('${_batch.done}/${_batch.total}',
-                                style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12)),
+                                style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 11)),
                           ],
                         )
-                      : const Icon(Icons.repeat, size: 18),
+                      : const Icon(Icons.repeat, size: 15),
                 ),
               ],
             ),

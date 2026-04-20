@@ -25,6 +25,32 @@ class _WeeklyChallengeWidgetState extends State<WeeklyChallengeWidget> {
     _loadCompletions();
   }
 
+  void _showDetailSheet(BuildContext context, List cards, int matched, int required, bool done) {
+    showModalBottomSheet(
+      context: context,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (_) {
+        final theme = Theme.of(context);
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('위클리 챌린지',
+                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900)),
+                const SizedBox(height: 12),
+                WeeklyChallengeWidget(cards: widget.cards),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _loadCompletions() async {
     final n = await WeeklyChallengeStore.getCompletionsThisWeek();
     if (mounted) setState(() => _completionsThisWeek = n);
@@ -45,7 +71,9 @@ class _WeeklyChallengeWidgetState extends State<WeeklyChallengeWidget> {
     final done = matched >= required && cards.isNotEmpty;
 
     if (widget.compact) {
-      return AnimatedContainer(
+      return GestureDetector(
+        onTap: () => _showDetailSheet(context, cards, matched, required, done),
+        child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
         decoration: BoxDecoration(
           color: done
@@ -90,8 +118,11 @@ class _WeeklyChallengeWidgetState extends State<WeeklyChallengeWidget> {
                   ),
                 ),
               ],
+              const SizedBox(width: 4),
+              Icon(Icons.expand_more, size: 14, color: theme.colorScheme.onSurfaceVariant),
             ],
           ),
+        ),
         ),
       );
     }

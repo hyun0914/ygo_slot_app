@@ -60,6 +60,7 @@
 ### 🗓 주간 챌린지
 - 매주 새로운 챌린지 (어둠 속성, 드래곤족, ATK 2000 이상 등 15종 로테이션)
 - 진행률 원형 인디케이터 표시
+- 모바일에서는 한 줄 요약으로 표시, 탭 시 상세 바텀시트 오픈
 
 ### 📅 스트릭 캘린더
 - 최근 5주 플레이/잭팟 달성일 시각화
@@ -88,6 +89,7 @@
 | 패키지 | 용도 |
 |---|---|
 | `flutter` | UI 프레임워크 |
+| `flutter_riverpod` | 전역 상태 관리 (XP·컬렉션·스트릭 등) |
 | `http` | YGOPRODeck API 호출 |
 | `shared_preferences` | 로컬 데이터 저장 (localStorage on web) |
 | `confetti` | 잭팟/보스 잭팟 컨페티 연출 |
@@ -153,3 +155,4 @@ firebase deploy
 - 비공식 팬 프로젝트입니다. Konami 및 Yu-Gi-Oh!와 어떤 형태로도 제휴/승인/후원을 받지 않습니다.
 - 카드 데이터/이미지 출처: [YGOPRODeck API](https://ygoprodeck.com/api-guide/)
 - 메인 플랫폼은 **Flutter Web**입니다. Android/iOS도 지원하나 일부 기능(Web Audio, 알림)은 웹 전용입니다.
+- 모바일 반응형 레이아웃: 뷰포트 너비 480px 미만에서 컴팩트 모드로 자동 전환됩니다 (AppBar 축소, 버튼 간소화, 카드 그리드 최대화).
