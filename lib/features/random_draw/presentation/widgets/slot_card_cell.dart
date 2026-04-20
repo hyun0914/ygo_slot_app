@@ -12,6 +12,7 @@ class SlotCardCell extends StatelessWidget {
   final VoidCallback? onTapPreview;
   final SlotDifficulty? difficulty;
   final Object? heroTag;
+  final bool compact;
 
   const SlotCardCell({
     super.key,
@@ -21,6 +22,7 @@ class SlotCardCell extends StatelessWidget {
     this.onTapPreview,
     this.difficulty,
     this.heroTag,
+    this.compact = false,
   });
 
   @override
@@ -45,8 +47,8 @@ class SlotCardCell extends StatelessWidget {
             // 첫 번째 비positioned 자식(SizedBox)이 Stack의 최소 크기를 결정함
             fit: StackFit.passthrough,
             children: [
-              // Stack 크기 기준 자식: 최소 높이 62px, 너비는 부모에 맞춤
-              const SizedBox(height: 62, width: double.infinity),
+              // Stack 크기 기준 자식: 너비는 부모에 맞춤
+              SizedBox(height: compact ? 46 : 62, width: double.infinity),
               Positioned.fill(
                 child: DecoratedBox(
                   decoration: BoxDecoration(

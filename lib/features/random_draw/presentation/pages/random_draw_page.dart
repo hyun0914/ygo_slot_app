@@ -1265,10 +1265,11 @@ class _RandomDrawPageState extends ConsumerState<RandomDrawPage> with TickerProv
               final hp = compact ? 12.0 : 16.0;
               return Column(children: [
         Padding(
-          padding: EdgeInsets.fromLTRB(hp, compact ? 6 : 10, hp, 4),
+          padding: EdgeInsets.fromLTRB(hp, compact ? 4 : 10, hp, 4),
           child: SlotHeader(
             rule: _todayRule,
             count: _count,
+            compact: compact,
             onTapExactTarget: _openExactTargetPreview,
           ),
         ),
@@ -1391,56 +1392,49 @@ class _RandomDrawPageState extends ConsumerState<RandomDrawPage> with TickerProv
             ),
           ),
         ],
-        Padding(
-          padding: EdgeInsets.fromLTRB(hp, 0, hp, compact ? 4 : 10),
-          child: SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: (_loading || _batch.running)
-                  ? null
-                  : () async {
-                _haptic(HapticFeedback.mediumImpact);
-                await _runDraw(showPopup: true);
-              },
-              style: ElevatedButton.styleFrom(
-                padding: EdgeInsets.symmetric(vertical: compact ? 8 : 18),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(18),
-                ),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  RotationTransition(
-                    turns: _spinning ? _spinController : const AlwaysStoppedAnimation(0),
-                    child: const Icon(Icons.casino),
-                  ),
-                  const SizedBox(width: 10),
-                  Text(
-                    _loading ? AppStrings.drawingButton : AppStrings.drawButton,
-                    style: TextStyle(
-                      fontSize: compact ? 15 : 18,
-                      fontWeight: FontWeight.w900,
+        // compact: 뽑기 + 연속뽑기 한 행. wide: 별도 행
+        if (compact)
+          Padding(
+            padding: EdgeInsets.fromLTRB(hp, 0, hp, 4),
+            child: Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: (_loading || _batch.running)
+                        ? null
+                        : () async {
+                      _haptic(HapticFeedback.mediumImpact);
+                      await _runDraw(showPopup: true);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        RotationTransition(
+                          turns: _spinning ? _spinController : const AlwaysStoppedAnimation(0),
+                          child: const Icon(Icons.casino, size: 18),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          _loading ? AppStrings.drawingButton : AppStrings.drawButton,
+                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900),
+                        ),
+                      ],
                     ),
                   ),
-                ],
-              ),
-            ),
-          ),
-        ),
-        Padding(
-          padding: EdgeInsets.fromLTRB(hp, 0, hp, compact ? 4 : 12),
-          child: Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton(
                   onPressed: _loading
                       ? null
                       : _batch.running
                       ? _stopBatchDraw
                       : _openBatchPicker,
                   style: OutlinedButton.styleFrom(
-                    padding: EdgeInsets.symmetric(vertical: compact ? 5 : 11),
+                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                     foregroundColor: _batch.running
                         ? theme.colorScheme.error
@@ -1449,40 +1443,110 @@ class _RandomDrawPageState extends ConsumerState<RandomDrawPage> with TickerProv
                         ? BorderSide(color: theme.colorScheme.error.withAlpha(160))
                         : null,
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(_batch.running ? Icons.stop_circle_outlined : Icons.repeat, size: 18),
-                      const SizedBox(width: 8),
-                      Text(
-                        _batch.running ? AppStrings.batchStopButton : AppStrings.batchStartButton,
-                        style: const TextStyle(fontWeight: FontWeight.w900),
-                      ),
-                    ],
-                  ),
+                  child: _batch.running
+                      ? Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.stop_circle_outlined, size: 16),
+                            const SizedBox(width: 4),
+                            Text('${_batch.done}/${_batch.total}',
+                                style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12)),
+                          ],
+                        )
+                      : const Icon(Icons.repeat, size: 18),
+                ),
+              ],
+            ),
+          )
+        else ...[
+          Padding(
+            padding: EdgeInsets.fromLTRB(hp, 0, hp, 10),
+            child: SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: (_loading || _batch.running)
+                    ? null
+                    : () async {
+                  _haptic(HapticFeedback.mediumImpact);
+                  await _runDraw(showPopup: true);
+                },
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 18),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    RotationTransition(
+                      turns: _spinning ? _spinController : const AlwaysStoppedAnimation(0),
+                      child: const Icon(Icons.casino),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      _loading ? AppStrings.drawingButton : AppStrings.drawButton,
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+                    ),
+                  ],
                 ),
               ),
-              if (_batch.running) ...[
-                const SizedBox(width: 10),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: theme.dividerColor),
-                  ),
-                  child: Text(
-                    '${_batch.done} / ${_batch.total}',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      fontWeight: FontWeight.w900,
-                      color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.fromLTRB(hp, 0, hp, 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: _loading
+                        ? null
+                        : _batch.running
+                        ? _stopBatchDraw
+                        : _openBatchPicker,
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 11),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      foregroundColor: _batch.running
+                          ? theme.colorScheme.error
+                          : theme.colorScheme.onSurfaceVariant,
+                      side: _batch.running
+                          ? BorderSide(color: theme.colorScheme.error.withAlpha(160))
+                          : null,
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(_batch.running ? Icons.stop_circle_outlined : Icons.repeat, size: 18),
+                        const SizedBox(width: 8),
+                        Text(
+                          _batch.running ? AppStrings.batchStopButton : AppStrings.batchStartButton,
+                          style: const TextStyle(fontWeight: FontWeight.w900),
+                        ),
+                      ],
                     ),
                   ),
                 ),
+                if (_batch.running) ...[
+                  const SizedBox(width: 10),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: theme.dividerColor),
+                    ),
+                    child: Text(
+                      '${_batch.done} / ${_batch.total}',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        fontWeight: FontWeight.w900,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
-        ),
+        ],
         if (_batch.running && _batch.total > 0)
           LinearProgressIndicator(
             value: _batch.done / _batch.total,

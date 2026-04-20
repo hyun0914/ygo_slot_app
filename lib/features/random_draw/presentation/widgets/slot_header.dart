@@ -11,12 +11,14 @@ class SlotHeader extends StatelessWidget {
   final DailySlotRule? rule;
   final int count;
   final void Function(SlotTarget t)? onTapExactTarget;
+  final bool compact;
 
   const SlotHeader({
     super.key,
     required this.rule,
     required this.count,
     this.onTapExactTarget,
+    this.compact = false,
   });
 
   @override
@@ -36,11 +38,12 @@ class SlotHeader extends StatelessWidget {
   }
 
   Widget _buildSkeleton(ThemeData theme) {
+    final vp = compact ? 6.0 : 10.0;
     return Semantics(
       key: const ValueKey('header_loading'),
       label: AppStrings.headerLoading,
       child: Container(
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        padding: EdgeInsets.fromLTRB(12, vp, 12, vp),
         decoration: BoxDecoration(
           color: theme.colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(16),
@@ -51,18 +54,16 @@ class SlotHeader extends StatelessWidget {
             // DAILY xN 배지 shimmer
             ShimmerBox(
               width: 72,
-              height: 28,
+              height: compact ? 22 : 28,
               borderRadius: BorderRadius.circular(999),
             ),
             const SizedBox(width: 8),
-            // 데이 종류 칩 shimmer
             ShimmerBox(
               width: 52,
-              height: 28,
+              height: compact ? 22 : 28,
               borderRadius: BorderRadius.circular(999),
             ),
             const SizedBox(width: 10),
-            // 3칸 슬롯 셀 shimmer
             Expanded(
               child: Row(
                 children: List.generate(3, (i) {
@@ -70,7 +71,7 @@ class SlotHeader extends StatelessWidget {
                     child: Padding(
                       padding: EdgeInsets.only(left: i == 0 ? 0 : 8),
                       child: ShimmerBox(
-                        height: 62,
+                        height: compact ? 46 : 62,
                         borderRadius: BorderRadius.circular(14),
                       ),
                     ),
@@ -85,9 +86,10 @@ class SlotHeader extends StatelessWidget {
   }
 
   Widget _buildLoaded(ThemeData theme) {
+    final vp = compact ? 6.0 : 10.0;
     return Container(
       key: ValueKey(rule!.kind),
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      padding: EdgeInsets.fromLTRB(12, vp, 12, vp),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(16),
@@ -170,6 +172,7 @@ class SlotHeader extends StatelessWidget {
                     title: title,
                     imageUrl: bgUrl,
                     isExact: isExact,
+                    compact: compact,
                     difficulty: isExact
                         ? SlotDifficulty.hard
                         : difficultyForCategoryKey(t.category ?? ''),
