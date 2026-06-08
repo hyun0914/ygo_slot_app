@@ -7,6 +7,8 @@ import '../../features/level/application/level_store.dart';
 import '../../features/level/domain/level_config.dart';
 import '../../features/random_draw/application/draw_stats_store.dart';
 import '../../features/random_draw/application/jackpot_streak_store.dart';
+import '../../features/random_draw/application/target_pity_store.dart';
+import '../../features/random_draw/domain/target_pity.dart';
 
 // ── XP ──────────────────────────────────────────────────────────────────────
 
@@ -127,6 +129,60 @@ class StreakNotifier extends AsyncNotifier<JackpotStreakData> {
 
 final streakProvider =
     AsyncNotifierProvider<StreakNotifier, JackpotStreakData>(StreakNotifier.new);
+
+// ── Target pity (천장 시스템) ─────────────────────────────────────────────────
+
+class TargetPityNotifier extends AsyncNotifier<TargetPityState> {
+  static String _dateKey(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
+
+  @override
+  Future<TargetPityState> build() async {
+    final loaded = await TargetPityStore.load();
+    return TargetPityStore.ensureToday(
+      current: loaded,
+      todayKey: _dateKey(DateTime.now()),
+    );
+  }
+
+  /// 오늘의 타겟 날짜와 어긋나 있으면(=타겟이 바뀌었으면) missCount를 리셋한다.
+  Future<TargetPityState> ensureToday() async {
+    final current = state.valueOrNull ?? TargetPityState.empty;
+    final updated = await TargetPityStore.ensureToday(
+      current: current,
+      todayKey: _dateKey(DateTime.now()),
+    );
+    state = AsyncData(updated);
+    return updated;
+  }
+
+  /// 뽑기 결과를 반영하고 갱신된 상태를 반환한다.
+  Future<TargetPityState> recordDraw({required bool jackpot}) async {
+    final current = state.valueOrNull ?? TargetPityState.empty;
+    final updated = await TargetPityStore.recordDraw(current: current, jackpot: jackpot);
+    state = AsyncData(updated);
+    return updated;
+  }
+
+  /// 연속 뽑기 베팅 결과를 missCount에 직접 반영한다.
+  Future<TargetPityState> applyBatchBetResult({
+    required int newMissCount,
+    required bool jackpotOccurred,
+  }) async {
+    final current = state.valueOrNull ?? TargetPityState.empty;
+    final updated = await TargetPityStore.applyBatchBetResult(
+      current: current,
+      newMissCount: newMissCount,
+      jackpotOccurred: jackpotOccurred,
+    );
+    state = AsyncData(updated);
+    return updated;
+  }
+}
+
+final targetPityProvider =
+    AsyncNotifierProvider<TargetPityNotifier, TargetPityState>(TargetPityNotifier.new);
 
 // ── Derived: level ───────────────────────────────────────────────────────────
 

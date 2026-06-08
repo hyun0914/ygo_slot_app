@@ -22,6 +22,7 @@ class DrawBoard extends StatelessWidget {
   final int count;
   final VoidCallback onRetry;
   final void Function(YgoCard card) onCardTap;
+  final int? spotlightIndex;
 
   const DrawBoard({
     super.key,
@@ -39,6 +40,7 @@ class DrawBoard extends StatelessWidget {
     required this.count,
     required this.onRetry,
     required this.onCardTap,
+    this.spotlightIndex,
   });
 
   int _gridColumnCount(double maxWidth) {
@@ -211,6 +213,8 @@ class DrawBoard extends StatelessWidget {
                       pulse: spinController,
                       isJackpotHit: isBossJackpot &&
                           (todayRule?.targets.any((t) => t.cardId == finalCard.id) ?? false),
+                      spotlight: spotlightIndex == i,
+                      dimmed: spotlightIndex != null && spotlightIndex != i,
                     );
                   },
                 );

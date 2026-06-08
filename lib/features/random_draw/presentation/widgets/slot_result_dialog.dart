@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/app_colors.dart';
 import '../../../../core/models/ygopro_card.dart';
 import '../../domain/daily_slot_rule.dart';
 import '../slot_ui/slot_ui_helpers.dart';
@@ -26,7 +27,6 @@ class SlotResultDialog extends StatelessWidget {
     this.onShare,
   });
 
-  static const _kGold = Color(0xFFFFD700);
 
   @override
   Widget build(BuildContext context) {
@@ -51,22 +51,22 @@ class SlotResultDialog extends StatelessWidget {
     }
 
     final iconColor = isBossJackpot
-        ? _kGold
+        ? AppColors.gold
         : isJackpot
-        ? _kGold
+        ? AppColors.gold
         : theme.colorScheme.primary;
 
     final badgeDecoration = isBossJackpot
         ? BoxDecoration(
-            color: _kGold.withAlpha(60),
+            color: AppColors.gold.withAlpha(60),
             borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: _kGold, width: 1.5),
+            border: Border.all(color: AppColors.gold, width: 1.5),
           )
         : isJackpot
         ? BoxDecoration(
-            color: _kGold.withAlpha(32),
+            color: AppColors.gold.withAlpha(32),
             borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: _kGold.withAlpha(180)),
+            border: Border.all(color: AppColors.gold.withAlpha(180)),
           )
         : BoxDecoration(
             color: theme.colorScheme.surfaceContainerHighest,
@@ -75,7 +75,7 @@ class SlotResultDialog extends StatelessWidget {
           );
 
     final badgeTextColor = isJackpot
-        ? const Color(0xFFB8860B)
+        ? AppColors.goldDark
         : theme.colorScheme.onSurface;
 
     return AlertDialog(
@@ -83,9 +83,9 @@ class SlotResultDialog extends StatelessWidget {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
         side: isBossJackpot
-            ? const BorderSide(color: _kGold, width: 3)
+            ? const BorderSide(color: AppColors.gold, width: 3)
             : isJackpot
-            ? const BorderSide(color: _kGold, width: 2)
+            ? const BorderSide(color: AppColors.gold, width: 2)
             : BorderSide.none,
       ),
       titlePadding: const EdgeInsets.fromLTRB(18, 18, 18, 0),
@@ -100,7 +100,7 @@ class SlotResultDialog extends StatelessWidget {
               title,
               style: theme.textTheme.titleLarge?.copyWith(
                 fontWeight: FontWeight.w900,
-                color: isBossJackpot ? _kGold : null,
+                color: isBossJackpot ? AppColors.gold : null,
               ),
             ),
           ),
@@ -162,7 +162,7 @@ class SlotResultDialog extends StatelessWidget {
                           ok ? Icons.check_circle : Icons.cancel,
                           size: 18,
                           color: ok
-                              ? (isBossJackpot || isJackpot ? _kGold : theme.colorScheme.primary)
+                              ? (isBossJackpot || isJackpot ? AppColors.gold : theme.colorScheme.primary)
                               : theme.colorScheme.error.withAlpha(180),
                         ),
                         const SizedBox(width: 8),
@@ -198,7 +198,7 @@ class SlotResultDialog extends StatelessWidget {
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
           style: isBossJackpot
-              ? TextButton.styleFrom(foregroundColor: _kGold)
+              ? TextButton.styleFrom(foregroundColor: AppColors.gold)
               : null,
           child: const Text('확인'),
         ),

@@ -137,8 +137,6 @@ String dayKindLabel(DayKind k) {
   switch (k) {
     case DayKind.normal:
       return '일반';
-    case DayKind.spotlight:
-      return '특별';
     case DayKind.boss:
       return '보스';
   }
@@ -148,8 +146,6 @@ IconData dayKindIcon(DayKind k) {
   switch (k) {
     case DayKind.normal:
       return Icons.grid_view_rounded;
-    case DayKind.spotlight:
-      return Icons.flash_on_rounded;
     case DayKind.boss:
       return Icons.emoji_events_rounded;
   }
@@ -159,8 +155,6 @@ Color dayKindChipBg(ThemeData theme, DayKind k) {
   switch (k) {
     case DayKind.normal:
       return theme.colorScheme.surfaceContainerHighest;
-    case DayKind.spotlight:
-      return theme.colorScheme.secondaryContainer;
     case DayKind.boss:
       return theme.colorScheme.primary;
   }
@@ -170,8 +164,6 @@ Color dayKindChipFg(ThemeData theme, DayKind k) {
   switch (k) {
     case DayKind.normal:
       return theme.colorScheme.onSurfaceVariant;
-    case DayKind.spotlight:
-      return theme.colorScheme.onSecondaryContainer;
     case DayKind.boss:
       return theme.colorScheme.onPrimary;
   }
@@ -181,8 +173,6 @@ Color dayKindChipBorder(ThemeData theme, DayKind k) {
   switch (k) {
     case DayKind.normal:
       return theme.dividerColor;
-    case DayKind.spotlight:
-      return theme.colorScheme.secondary.withAlpha(80);
     case DayKind.boss:
       return Colors.transparent;
   }

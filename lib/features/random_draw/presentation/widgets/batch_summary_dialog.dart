@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/app_colors.dart';
+import '../../domain/target_pity.dart';
+
 class BatchSummaryDialog extends StatelessWidget {
   final int total;
   final Map<int, int> hist;
   final int streak;
   final int best;
+  final BatchBetOutcome bet;
 
   const BatchSummaryDialog({
     super.key,
@@ -12,16 +16,18 @@ class BatchSummaryDialog extends StatelessWidget {
     required this.hist,
     required this.streak,
     required this.best,
+    required this.bet,
   });
 
-  static void show(
+  static Future<void> show(
     BuildContext context, {
     required int total,
     required Map<int, int> hist,
     required int streak,
     required int best,
+    required BatchBetOutcome bet,
   }) {
-    showGeneralDialog(
+    return showGeneralDialog(
       context: context,
       barrierDismissible: true,
       barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
@@ -32,6 +38,7 @@ class BatchSummaryDialog extends StatelessWidget {
         hist: hist,
         streak: streak,
         best: best,
+        bet: bet,
       ),
       transitionBuilder: (ctx, animation, _, child) {
         final scale = CurvedAnimation(parent: animation, curve: Curves.easeOutBack);
@@ -60,7 +67,7 @@ class BatchSummaryDialog extends StatelessWidget {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
         side: hasJackpot
-            ? const BorderSide(color: Color(0xFFFFD700), width: 2)
+            ? const BorderSide(color: AppColors.gold, width: 2)
             : BorderSide.none,
       ),
       title: Text('🔁 연속 뽑기 결과',
@@ -82,18 +89,18 @@ class BatchSummaryDialog extends StatelessWidget {
               color: theme.colorScheme.tertiary),
           const SizedBox(height: 6),
           _ResultBar(label: '3개(잭팟)', count: three, total: total,
-              color: hasJackpot ? const Color(0xFFFFD700) : theme.colorScheme.primary),
+              color: hasJackpot ? AppColors.gold : theme.colorScheme.primary),
           const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
               color: hasJackpot
-                  ? const Color(0xFFFFD700).withAlpha(20)
+                  ? AppColors.gold.withAlpha(20)
                   : theme.colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
                 color: hasJackpot
-                    ? const Color(0xFFFFD700).withAlpha(160)
+                    ? AppColors.gold.withAlpha(160)
                     : theme.dividerColor,
               ),
             ),
@@ -104,7 +111,7 @@ class BatchSummaryDialog extends StatelessWidget {
                   '🎰 잭팟률: ${jackpotRate.toStringAsFixed(1)}%',
                   style: theme.textTheme.bodyMedium?.copyWith(
                     fontWeight: FontWeight.w900,
-                    color: hasJackpot ? const Color(0xFFB8860B) : null,
+                    color: hasJackpot ? AppColors.goldDark : null,
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -114,21 +121,68 @@ class BatchSummaryDialog extends StatelessWidget {
               ],
             ),
           ),
+          const SizedBox(height: 10),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: bet.won
+                  ? AppColors.gold.withAlpha(28)
+                  : theme.colorScheme.errorContainer.withAlpha(70),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: bet.won
+                    ? AppColors.gold.withAlpha(140)
+                    : theme.colorScheme.error.withAlpha(120),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  bet.won
+                      ? '🎉 베팅 성공! (${bet.betAmount}P 베팅)'
+                      : '💸 베팅 실패... (${bet.betAmount}P 베팅)',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w900,
+                    color: bet.won ? AppColors.goldDark : theme.colorScheme.error,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '🎯 천장 포인트: ${bet.pointsBefore}P → ${bet.pointsAfter}P'
+                  '${bet.pointsDoubled ? " (2배 적립!)" : ""}',
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                ),
+                if (bet.won && bet.bonusCardCount > 0) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    '🎁 보너스 카드 ${bet.bonusCardCount}장 획득!',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.goldDark,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
           if (hasJackpot && streak > 0) ...[
             const SizedBox(height: 10),
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               decoration: BoxDecoration(
-                color: const Color(0xFFFFD700).withAlpha(28),
+                color: AppColors.gold.withAlpha(28),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFFFD700).withAlpha(140)),
+                border: Border.all(color: AppColors.gold.withAlpha(140)),
               ),
               child: Text(
                 '🔥 $streak일 연속 잭팟 달성 중!${best > 1 ? "  최고 $best일" : ""}',
                 style: theme.textTheme.bodySmall?.copyWith(
                   fontWeight: FontWeight.w900,
-                  color: const Color(0xFFB8860B),
+                  color: AppColors.goldDark,
                 ),
               ),
             ),

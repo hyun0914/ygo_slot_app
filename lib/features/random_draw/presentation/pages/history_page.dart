@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/app_colors.dart';
 import '../../../../core/app_constants.dart';
 import '../../../../core/widgets/app_network_image.dart';
 import '../../../../core/widgets/ygo_card_back.dart';
@@ -256,12 +257,11 @@ class _HitsBadge extends StatelessWidget {
   final ThemeData theme;
   const _HitsBadge({required this.hits, required this.theme});
 
-  static const _kGold = Color(0xFFFFD700);
 
   @override
   Widget build(BuildContext context) {
     final (label, bg, fg) = switch (hits) {
-      >= 3 => ('🏆 잭팟', _kGold.withAlpha(40), const Color(0xFFB8860B)),
+      >= 3 => ('🏆 잭팟', AppColors.gold.withAlpha(40), AppColors.goldDark),
       2 => ('🔥 2적중', theme.colorScheme.secondaryContainer,
           theme.colorScheme.onSecondaryContainer),
       1 => ('✨ 1적중', theme.colorScheme.tertiaryContainer,
@@ -276,7 +276,7 @@ class _HitsBadge extends StatelessWidget {
         color: bg,
         borderRadius: BorderRadius.circular(999),
         border: hits >= 3
-            ? Border.all(color: _kGold.withAlpha(160))
+            ? Border.all(color: AppColors.gold.withAlpha(160))
             : null,
       ),
       child: Text(

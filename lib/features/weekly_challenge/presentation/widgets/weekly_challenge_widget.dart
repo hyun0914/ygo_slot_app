@@ -87,10 +87,12 @@ class _WeeklyChallengeWidgetState extends State<WeeklyChallengeWidget> {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
               Text(done ? '✅' : '🎯', style: const TextStyle(fontSize: 14)),
               const SizedBox(width: 6),
-              Expanded(
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 110),
                 child: Text(
                   _challenge.title,
                   maxLines: 1,

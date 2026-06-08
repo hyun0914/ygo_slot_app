@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 
+import '../../../../core/app_colors.dart';
 import '../../domain/daily_slot_rule.dart';
 
 class BossCountdownWidget extends StatelessWidget {
@@ -19,9 +20,9 @@ class BossCountdownWidget extends StatelessWidget {
       return _chip(
         theme,
         '👑 오늘이 보스데이!',
-        const Color(0xFFFFD700).withAlpha(60),
-        const Color(0xFFFFD700),
-        const Color(0xFFB8860B),
+        AppColors.gold.withAlpha(60),
+        AppColors.gold,
+        AppColors.goldDark,
       );
     }
 

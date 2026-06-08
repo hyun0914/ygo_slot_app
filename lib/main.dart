@@ -1,11 +1,10 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
 
-import 'features/auth/presentation/pages/auth_page.dart';
-import 'features/random_draw/presentation/pages/random_draw_page.dart';
+import 'features/shell/presentation/pages/main_shell.dart';
 import 'firebase_options.dart';
 
 void main() async {
@@ -27,6 +26,25 @@ void main() async {
   runApp(const ProviderScope(child: MyApp()));
 }
 
+// 타이틀/버튼/배지 등 임팩트가 필요한 곳은 굵은 디스플레이 폰트,
+// 본문은 가독성 좋은 본문 폰트로 — 두 폰트를 섞어 게임다운 느낌을 낸다.
+TextTheme _buildTextTheme(Brightness brightness) {
+  final base = GoogleFonts.notoSansKrTextTheme(
+    ThemeData(brightness: brightness).textTheme,
+  );
+  final display = GoogleFonts.blackHanSansTextTheme(base);
+  return base.copyWith(
+    displayLarge: display.displayLarge,
+    displayMedium: display.displayMedium,
+    displaySmall: display.displaySmall,
+    headlineLarge: display.headlineLarge,
+    headlineMedium: display.headlineMedium,
+    headlineSmall: display.headlineSmall,
+    titleLarge: display.titleLarge,
+    labelLarge: display.labelLarge,
+  );
+}
+
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -39,9 +57,10 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF311B92),
+          seedColor: const Color(0xFF3F51B5),
           brightness: Brightness.light,
         ),
+        textTheme: _buildTextTheme(Brightness.light),
         appBarTheme: const AppBarTheme(
           centerTitle: true,
           scrolledUnderElevation: 2,
@@ -50,51 +69,16 @@ class MyApp extends StatelessWidget {
       darkTheme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF4527A0),
+          seedColor: const Color(0xFF5C6BC0),
           brightness: Brightness.dark,
         ),
+        textTheme: _buildTextTheme(Brightness.dark),
         appBarTheme: const AppBarTheme(
           centerTitle: true,
           scrolledUnderElevation: 2,
         ),
       ),
-      home: const _AuthGate(),
-    );
-  }
-}
-
-class _AuthGate extends StatefulWidget {
-  const _AuthGate();
-
-  @override
-  State<_AuthGate> createState() => _AuthGateState();
-}
-
-class _AuthGateState extends State<_AuthGate> {
-  bool _timedOut = false;
-
-  @override
-  void initState() {
-    super.initState();
-    Future.delayed(const Duration(seconds: 5), () {
-      if (mounted) setState(() => _timedOut = true);
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.authStateChanges(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting && !_timedOut) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
-        }
-        if (snapshot.hasError) return const AuthPage();
-        if (snapshot.data != null) return const RandomDrawPage();
-        return const AuthPage();
-      },
+      home: const MainShell(),
     );
   }
 }

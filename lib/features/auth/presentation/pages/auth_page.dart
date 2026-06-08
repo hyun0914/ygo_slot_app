@@ -41,6 +41,10 @@ class _AuthPageState extends State<AuthPage> {
         password: _pwCtrl.text,
         nickname: _nickCtrl.text.trim(),
       );
+      // 새 계정에는 클라우드 데이터가 없으므로, 기기에 있던 로컬 진행 상황을 올려준다.
+      if (err == null) {
+        await CloudSyncService.uploadAll();
+      }
     } else {
       err = await AuthService.signIn(
         email: _emailCtrl.text.trim(),
@@ -55,7 +59,7 @@ class _AuthPageState extends State<AuthPage> {
     if (err != null) {
       setState(() { _errorMsg = err; _loading = false; });
     } else {
-      setState(() { _loading = false; });
+      Navigator.of(context).pop(true);
     }
   }
 
@@ -63,6 +67,10 @@ class _AuthPageState extends State<AuthPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+      ),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -88,6 +96,14 @@ class _AuthPageState extends State<AuthPage> {
                       _isSignUp ? '회원가입' : '로그인',
                       textAlign: TextAlign.center,
                       style: theme.textTheme.titleMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '계정을 연동하면 다른 기기에서도 진행 상황을\n이어서 즐길 수 있어요. (선택 사항)',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),

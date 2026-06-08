@@ -1,5 +1,8 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 
+import '../../../../core/app_colors.dart';
 import '../../../../core/app_constants.dart';
 import '../../../../core/models/ygopro_card.dart';
 
@@ -14,6 +17,8 @@ class CardTile extends StatefulWidget {
   final bool spinning;
   final Animation<double> pulse;
   final bool isJackpotHit;
+  final bool spotlight;
+  final bool dimmed;
 
   const CardTile({
     super.key,
@@ -24,6 +29,8 @@ class CardTile extends StatefulWidget {
     required this.spinning,
     required this.pulse,
     this.isJackpotHit = false,
+    this.spotlight = false,
+    this.dimmed = false,
   });
 
   @override
@@ -34,6 +41,7 @@ class _CardTileState extends State<CardTile> with TickerProviderStateMixin {
   late final AnimationController _bounceController;
   late final Animation<double> _bounceAnimation;
   late final AnimationController _jackpotGlowController;
+  late final AnimationController _spotlightController;
 
   @override
   void initState() {
@@ -55,6 +63,12 @@ class _CardTileState extends State<CardTile> with TickerProviderStateMixin {
     if (widget.isJackpotHit) {
       _jackpotGlowController.repeat(reverse: true);
     }
+
+    _spotlightController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+    if (widget.spotlight) _spotlightController.forward(from: 0.0);
   }
 
   @override
@@ -69,12 +83,16 @@ class _CardTileState extends State<CardTile> with TickerProviderStateMixin {
       _jackpotGlowController.stop();
       _jackpotGlowController.value = 0.0;
     }
+    if (widget.spotlight && !oldWidget.spotlight) {
+      _spotlightController.forward(from: 0.0);
+    }
   }
 
   @override
   void dispose() {
     _bounceController.dispose();
     _jackpotGlowController.dispose();
+    _spotlightController.dispose();
     super.dispose();
   }
 
@@ -82,7 +100,7 @@ class _CardTileState extends State<CardTile> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return AnimatedBuilder(
+    final cardTile = AnimatedBuilder(
       animation: _jackpotGlowController,
       builder: (_, child) {
         if (!widget.isJackpotHit) return child!;
@@ -92,7 +110,7 @@ class _CardTileState extends State<CardTile> with TickerProviderStateMixin {
             borderRadius: BorderRadius.circular(14),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFFFFD700).withAlpha((150 + (80 * v)).toInt()),
+                color: AppColors.gold.withAlpha((150 + (80 * v)).toInt()),
                 blurRadius: 8 + (14 * v),
                 spreadRadius: 1 + (3 * v),
               ),
@@ -160,8 +178,8 @@ class _CardTileState extends State<CardTile> with TickerProviderStateMixin {
                                       decoration: BoxDecoration(
                                         gradient: RadialGradient(
                                           colors: [
-                                            const Color(0xFFFFD700).withAlpha((180 * v).toInt()),
-                                            const Color(0xFFFFD700).withAlpha((40 * v).toInt()),
+                                            AppColors.gold.withAlpha((180 * v).toInt()),
+                                            AppColors.gold.withAlpha((40 * v).toInt()),
                                             Colors.transparent,
                                           ],
                                           stops: const [0.0, 0.5, 1.0],
@@ -244,6 +262,37 @@ class _CardTileState extends State<CardTile> with TickerProviderStateMixin {
           ),
         ),
       ),
+      ),
+    );
+
+    return AnimatedBuilder(
+      animation: _spotlightController,
+      builder: (context, child) {
+        final t = _spotlightController.value;
+        final pulse = sin(t * pi).clamp(0.0, 1.0);
+        Widget result = child!;
+        if (pulse > 0) {
+          result = DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.white.withAlpha((170 * pulse).round()),
+                  blurRadius: 18 * pulse,
+                  spreadRadius: 2 * pulse,
+                ),
+              ],
+            ),
+            child: result,
+          );
+        }
+        return Transform.scale(scale: 1.0 + pulse * 0.08, child: result);
+      },
+      child: AnimatedOpacity(
+        opacity: widget.dimmed ? 0.4 : 1.0,
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOut,
+        child: cardTile,
       ),
     );
   }

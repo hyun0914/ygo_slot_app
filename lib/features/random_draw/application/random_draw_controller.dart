@@ -13,6 +13,9 @@ class RandomDrawController {
   String? _dailyPoolDateKey;
   Future<void>? _dailyPoolFuture;
 
+  // ID로 조회한 카드 캐시 (위시 카드 주입 시 API 재호출 절약)
+  final Map<int, YgoCard> _cardByIdCache = {};
+
   RandomDrawController(this.apiClient);
 
   List<YgoCard> get cachedDailyPool => List.unmodifiable(_dailyPool);
@@ -70,6 +73,31 @@ class RandomDrawController {
     }
 
     debugPrint('[DailyPool] 모든 시도 실패 — 데일리 룰 없이 진행');
+  }
+
+  /// 카드 ID로 전체 정보를 조회한다 (위시 카드 주입용).
+  /// 데일리 풀에 이미 있으면 그걸 쓰고, 없으면 API에 직접 id로 질의한다.
+  Future<YgoCard?> fetchCardById(int id) async {
+    final cached = _cardByIdCache[id];
+    if (cached != null) return cached;
+
+    for (final c in _dailyPool) {
+      if (c.id == id) {
+        _cardByIdCache[id] = c;
+        return c;
+      }
+    }
+
+    try {
+      final data = await apiClient.fetchCards({'id': id.toString()});
+      if (data.isEmpty) return null;
+      final card = YgoCard.fromJson(data.first as Map<String, dynamic>);
+      _cardByIdCache[id] = card;
+      return card;
+    } catch (e) {
+      debugPrint('[TargetPity] 카드($id) 조회 실패: $e');
+      return null;
+    }
   }
 
   static String _todayKey(DateTime now) =>

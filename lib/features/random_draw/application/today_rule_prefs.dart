@@ -24,7 +24,6 @@ class TodayRulePrefs {
       final kindStr = (m['kind'] as String?) ?? 'normal';
       final kind = switch (kindStr) {
         'boss' => DayKind.boss,
-        'spotlight' => DayKind.spotlight,
         _ => DayKind.normal,
       };
 
@@ -57,7 +56,6 @@ class TodayRulePrefs {
       'dateKey': rule.dateKey,
       'kind': switch (rule.kind) {
         DayKind.normal => 'normal',
-        DayKind.spotlight => 'spotlight',
         DayKind.boss => 'boss',
       },
       'targets': rule.targets.map((t) {

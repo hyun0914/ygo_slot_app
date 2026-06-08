@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/app_colors.dart';
 import '../../application/play_log_store.dart';
 
 class StreakCalendarWidget extends StatefulWidget {
@@ -103,7 +104,7 @@ class _StreakCalendarWidgetState extends State<StreakCalendarWidget> {
           padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
           child: Row(
             children: [
-              _LegendDot(color: const Color(0xFFFFD700).withAlpha(220), label: '잭팟'),
+              _LegendDot(color: AppColors.gold.withAlpha(220), label: '잭팟'),
               const SizedBox(width: 12),
               _LegendDot(color: Colors.green.withAlpha(180), label: '플레이'),
               const SizedBox(width: 12),
@@ -147,7 +148,7 @@ class _DayCell extends StatelessWidget {
     Border? border;
 
     if (isJackpot) {
-      bgColor = const Color(0xFFFFD700).withAlpha(200);
+      bgColor = AppColors.gold.withAlpha(200);
       textColor = Colors.black87;
     } else if (isPlayed) {
       bgColor = Colors.green.withAlpha(160);

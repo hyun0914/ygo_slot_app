@@ -27,25 +27,38 @@ class ProbabilityPage extends StatelessWidget {
           // ② 날 종류별 출현 확률
           const _SectionTitle('날 종류별 출현 확률'),
           _InfoCard(
-            child: _ProbTable(
-              headers: const ['모드', '일반', '특별', '보스'],
-              rows: const [
-                ['도전 (3장)', '50%', '30%', '20%'],
-                ['기본 (5장)', '70%', '20%', '10%'],
-                ['편안 (7장)', '64%', '24%', '12%'],
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '날 종류는 타겟 구성과 무관하며, 연출(라벨·아이콘·색상, 보스 잭팟 발동 여부)에만 영향을 줍니다.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _ProbTable(
+                  headers: const ['모드', '일반', '보스'],
+                  rows: const [
+                    ['도전 (3장)', '80%', '20%'],
+                    ['기본 (5장)', '90%', '10%'],
+                    ['편안 (7장)', '88%', '12%'],
+                  ],
+                  highlightCols: const {2: _ColHighlight.amber},
+                ),
               ],
-              highlightCols: const {2: _ColHighlight.secondary, 3: _ColHighlight.amber},
             ),
           ),
 
-          // ③ 보스 날 잭팟 확률
-          const _SectionTitle('보스 날 잭팟 확률 (특정 카드 3장 전부 적중)'),
+          // ③ 잭팟 확률
+          const _SectionTitle('잭팟 확률 (특정 카드 3장 전부 적중)'),
           _InfoCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '보스 날에는 특정 카드 3장이 지정됩니다. 뽑은 카드에 3장 전부 들어있으면 잭팟입니다.\n'
+                  '날 종류와 무관하게 매일 특정 카드 3장이 오늘의 타겟으로 고정됩니다. '
+                  '뽑은 카드에 3장 전부 들어있으면 잭팟입니다.\n'
                   '공식: k×(k-1)×(k-2) / (200×199×198)',
                   style: theme.textTheme.bodySmall,
                 ),
@@ -59,105 +72,11 @@ class ProbabilityPage extends StatelessWidget {
                   ],
                   highlightCols: const {1: _ColHighlight.amber, 2: _ColHighlight.amber},
                 ),
-              ],
-            ),
-          ),
-
-          // ④ 특별 날
-          const _SectionTitle('특별 날'),
-          _InfoCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '조건 구성: 특정 카드 1장 + 카테고리 조건 2개',
-                  style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  '특정 카드 1장 적중 확률',
-                  style: theme.textTheme.labelMedium,
-                ),
-                const SizedBox(height: 6),
-                _ProbTable(
-                  headers: const ['모드', '확률'],
-                  rows: const [
-                    ['도전 (3장)', '1.5%'],
-                    ['기본 (5장)', '2.5%'],
-                    ['편안 (7장)', '3.5%'],
-                  ],
-                  highlightCols: const {1: _ColHighlight.secondary},
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  '카테고리 조건 2개 각각 적중 확률 범위',
-                  style: theme.textTheme.labelMedium,
-                ),
-                const SizedBox(height: 6),
-                _ProbTable(
-                  headers: const ['모드', '조건 1개 적중 범위'],
-                  rows: const [
-                    ['도전 (3장)', '약 27% ~ 73%'],
-                    ['기본 (5장)', '약 41% ~ 88%'],
-                    ['편안 (7장)', '약 52% ~ 95%'],
-                  ],
-                  highlightCols: const {},
-                ),
                 const SizedBox(height: 10),
                 Text(
-                  '잭팟(3개 전부 적중)은 특정 카드 확률 × 카테고리 2개 각각의 확률입니다. '
-                  '특정 카드가 병목이므로 최대 약 1~3% 수준으로 매우 낮습니다.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // ⑤ 일반 날
-          const _SectionTitle('일반 날'),
-          _InfoCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '조건 구성: 카테고리 조건 3개',
-                  style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  '조건 1개 적중 확률 범위 (풀 구성에 따라 다름)',
-                  style: theme.textTheme.labelMedium,
-                ),
-                const SizedBox(height: 6),
-                _ProbTable(
-                  headers: const ['모드', '적중 확률 범위'],
-                  rows: const [
-                    ['도전 (3장)', '약 27% ~ 73%'],
-                    ['기본 (5장)', '약 41% ~ 88%'],
-                    ['편안 (7장)', '약 52% ~ 95%'],
-                  ],
-                  highlightCols: const {},
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  '잭팟(3개 조건 전부 적중) 확률 범위',
-                  style: theme.textTheme.labelMedium,
-                ),
-                const SizedBox(height: 6),
-                _ProbTable(
-                  headers: const ['모드', '잭팟 확률 범위'],
-                  rows: const [
-                    ['도전 (3장)', '약 2% ~ 39%'],
-                    ['기본 (5장)', '약 7% ~ 68%'],
-                    ['편안 (7장)', '약 14% ~ 86%'],
-                  ],
-                  highlightCols: const {1: _ColHighlight.secondary},
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '각 조건은 독립적으로 판정됩니다. 조건이 풀의 카드 다수와 겹칠수록 쉬워집니다.',
+                  '잭팟 확률이 매우 낮은 대신, 천장(피티) 시스템이 잭팟 없이 흘러간 뽑기 횟수를 누적해 '
+                  '소프트 천장(200회)부터 부족한 타겟을 보너스로 채워줄 확률이 점차 오르고, '
+                  '하드 천장(500회)에서는 확정 잭팟으로 이어집니다.',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),

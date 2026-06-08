@@ -43,7 +43,7 @@ const kAllAchievements = [
   Achievement(id: 'batch_first',       title: '연속 뽑기',     description: '첫 배치 뽑기 완료',                  emoji: '🎲'),
   Achievement(id: 'challenge_jackpot', title: '챌린지 정복',   description: '챌린지 모드 (3장) 잭팟',             emoji: '⚔️'),
   Achievement(id: 'comfort_jackpot',   title: '여유로운 승리', description: '컴포트 모드 (7장) 잭팟',             emoji: '🛋️'),
-  Achievement(id: 'collection_10',     title: '수집 시작',     description: '10종 카드 수집',                     emoji: '📚'),
-  Achievement(id: 'collection_50',     title: '중급 수집가',   description: '50종 카드 수집',                     emoji: '📖'),
-  Achievement(id: 'collection_100',    title: '백 종 수집',    description: '100종 카드 수집',                    emoji: '📕'),
+  Achievement(id: 'collection_5',      title: '전리품 시작',   description: '전리품 5종 수집',                    emoji: '📚'),
+  Achievement(id: 'collection_20',     title: '중급 수집가',   description: '전리품 20종 수집',                   emoji: '📖'),
+  Achievement(id: 'collection_50',     title: '베테랑 수집가', description: '전리품 50종 수집',                   emoji: '📕'),
 ];

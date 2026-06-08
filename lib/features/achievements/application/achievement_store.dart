@@ -99,9 +99,9 @@ class AchievementStore {
     if (e.totalJackpots >= 5) tryUnlock('jackpots_5');
     if (e.totalJackpots >= 10) tryUnlock('jackpots_10');
     if (e.totalJackpots >= 50) tryUnlock('jackpots_50');
-    if (e.collectionSize >= 10) tryUnlock('collection_10');
+    if (e.collectionSize >= 5) tryUnlock('collection_5');
+    if (e.collectionSize >= 20) tryUnlock('collection_20');
     if (e.collectionSize >= 50) tryUnlock('collection_50');
-    if (e.collectionSize >= 100) tryUnlock('collection_100');
 
     if (newlyUnlocked.isNotEmpty) {
       await prefs.setString(
