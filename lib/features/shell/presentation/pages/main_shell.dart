@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../collection/presentation/pages/collection_page.dart';
+import '../../../decoder/presentation/pages/decoder_page.dart';
 import '../../../favorites/presentation/pages/favorites_page.dart';
 import '../../../random_draw/presentation/pages/random_draw_page.dart';
 import '../../../stats/presentation/pages/stats_page.dart';
@@ -19,6 +20,7 @@ class _MainShellState extends State<MainShell> with SingleTickerProviderStateMix
 
   static const _pages = [
     RandomDrawPage(),
+    DecoderPage(),
     CollectionPage(),
     FavoritesPage(),
     StatsPage(),
@@ -86,6 +88,11 @@ class _MainShellState extends State<MainShell> with SingleTickerProviderStateMix
                 icon: Icon(Icons.casino_outlined),
                 selectedIcon: Icon(Icons.casino),
                 label: '뽑기',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.psychology_outlined),
+                selectedIcon: Icon(Icons.psychology),
+                label: '디코더',
               ),
               NavigationDestination(
                 icon: Icon(Icons.style_outlined),

@@ -4,11 +4,14 @@ import 'package:http/http.dart' as http;
 
 class YgoApiClient {
   static const _baseUrl = 'https://db.ygoprodeck.com/api/v7/cardinfo.php';
-  static const _timeout = Duration(seconds: 15);
+  static const _defaultTimeout = Duration(seconds: 30);
 
-  Future<List<dynamic>> fetchCards(Map<String, String> params) async {
+  Future<List<dynamic>> fetchCards(
+    Map<String, String> params, {
+    Duration timeout = _defaultTimeout,
+  }) async {
     final uri = Uri.parse(_baseUrl).replace(queryParameters: params);
-    final response = await http.get(uri).timeout(_timeout);
+    final response = await http.get(uri).timeout(timeout);
 
     if (response.statusCode != 200) {
       String? errorText;
